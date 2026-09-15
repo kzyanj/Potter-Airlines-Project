@@ -1,0 +1,15 @@
+route_id,origin,destination,origin_city,destination_city,route_popularity,scheduled_duration_minutes
+R001,YYZ,JFK,Toronto,New York,High,90
+R002,YYZ,YVR,Toronto,Vancouver,High,300
+R003,YYZ,YUL,Toronto,Montreal,High,70
+R004,YYZ,BOS,Toronto,Boston,Medium,85
+R005,YYZ,ORD,Toronto,Chicago,Medium,105
+R006,YYZ,EWR,Toronto,Newark,Low,95
+R007,YYZ,YOW,Toronto,Ottawa,High,60
+R008,YUL,BOS,Montreal,Boston,Medium,75
+R009,YUL,JFK,Montreal,New York,Medium,80
+R010,YOW,BOS,Ottawa,Boston,Low,80
+R011,YOW,YUL,Ottawa,Montreal,Medium,55
+R012,YUL,YYZ,Montreal,Toronto,High,70
+R013,YOW,YYZ,Ottawa,Toronto,High,60
+R014,YVR,YYZ,Vancouver,Toronto,High,300
