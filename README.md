@@ -5,10 +5,10 @@
 ### Data & Database
 - [x] Generate synthetic flight dataset — Owner: Kensley
 - [x] Add aircraft, routes, schedules, and connection-ready flight data — Owner: Kensley
-- [ ] Create SQLite schema — Owner:
-- [ ] Load CSV data into SQLite — Owner:
-- [ ] Implement database SELECT / INSERT / UPDATE / DELETE functions — Owner:
-- [ ] Validate primary-key / foreign-key relationships — Owner:
+- [x] Create SQLite schema — Owner: Kensley
+- [x] Load CSV data into SQLite — Owner: Kensley
+- [x] Implement database SELECT / INSERT / UPDATE / DELETE functions — Owner: Kensley
+- [x] Validate primary-key / foreign-key relationships — Owner: Kensley
 
 ### Pricing Model
 - [ ] Finalize base fares — Owner:
