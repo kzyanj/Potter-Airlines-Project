@@ -41,8 +41,11 @@ From the project root, run:
 python database/init_db.py
 ```
 
-This creates `database/potter_airlines.db`, which is ignored by Git. **Running
-this command again replaces the database and erases flight edits and seat changes.**
+This creates `database/potter_airlines.db`, which is ignored by Git. If the
+database already exists, this command stops without changing it. **Only run
+`python database/init_db.py --reset` when you intentionally want to rebuild
+the database from the CSV; resetting erases saved flight edits and seat changes.**
+
 The database layer uses Python's standard library. The planned vectorized
 analysis will require Pandas or NumPy once implemented.
 
@@ -56,14 +59,14 @@ There is no complete pricing or command-line workflow to run yet.
 - [x] Import flights and provide parameterized database operations.
 - [x] Validate flight IDs and seat limits during import or updates.
 
-- [ ] Add a meaningful `Flight` class and pricing functions.
-- [ ] Define explainable factors for time to departure, route demand, seat
+- [x] Add a meaningful `Flight` class and pricing functions.
+- [x] Define explainable factors for time to departure, route demand, seat
       availability, and seasonality; keep prices within sensible minimum and
       maximum bounds.
-- [ ] Calculate prices for multiple flights and filter or rank useful results.
-- [ ] Use Pandas or NumPy vectorized operations for at least one meaningful
+- [x] Calculate prices for multiple flights and filter or rank useful results.
+- [x] Use Pandas or NumPy vectorized operations for at least one meaningful
       calculation or analysis across multiple flights.
-- [ ] Add assertions and handle pricing edge cases.
+- [x] Add assertions and handle pricing edge cases.
 
 ### Frontend
 

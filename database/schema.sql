@@ -9,6 +9,7 @@ CREATE TABLE flights (
     seat_capacity INTEGER NOT NULL CHECK (seat_capacity > 0),
     seats_remaining INTEGER NOT NULL CHECK (seats_remaining >= 0 AND seats_remaining <= seat_capacity),
     base_fare REAL NOT NULL CHECK (base_fare >= 0),
+    minimum_fare REAL NOT NULL CHECK (minimum_fare >= 0 AND minimum_fare <= base_fare),
     maximum_fare REAL NOT NULL CHECK (maximum_fare >= base_fare),
     CHECK (origin <> destination)
 );
