@@ -1,18 +1,18 @@
 # Potter Airlines Dynamic Revenue Management System
 
 A Python project for calculating explainable flight prices from time to departure,
-route demand, remaining seats, and seasonality. This repository currently contains
-the flight dataset and SQLite foundation. The pricing model and runnable user
-workflow are still in progress.
+route demand, remaining seats, and seasonality. The flight dataset, SQLite database,
+pricing/search backend, and Streamlit admin interface are implemented; testing and
+final documentation are still in progress.
 
 ## Project structure
 
 ```text
 data/       Source flight CSV
 database/   SQLite schema, data import, and database operations (Backend)
-backend/    Flight class, pricing, filtering, and ranking (to be built)
-frontend/   Streamlit interface (to be built)
-tests/      Database and application tests (to be built)
+backend/    Flight class, pricing, search, and admin operations (Backend)
+frontend/   Streamlit admin/revenue-management interface (Frontend)
+tests/      Database and application tests
 README.md   Setup, project progress, and final documentation
 ```
 
@@ -46,10 +46,20 @@ database already exists, this command stops without changing it. **Only run
 `python database/init_db.py --reset` when you intentionally want to rebuild
 the database from the CSV; resetting erases saved flight edits and seat changes.**
 
-The database layer uses Python's standard library. The planned vectorized
-analysis will require Pandas or NumPy once implemented.
+The database layer uses Python's standard library. `backend/search.py` uses
+NumPy for a vectorized fare calculation across multiple flights.
 
-There is no complete pricing or command-line workflow to run yet.
+Search, price, and inspect flights from the command line:
+
+```bash
+python -m backend.cli --origin Toronto --destination Montreal --date 2026-10-02
+```
+
+Or launch the Streamlit admin interface:
+
+```bash
+streamlit run frontend/app.py
+```
 
 ## Project task tracker
 
@@ -70,10 +80,13 @@ There is no complete pricing or command-line workflow to run yet.
 
 ### Frontend
 
-- [ ] Build a Streamlit interface.
-- [ ] Add origin, destination, and departure date selection.
-- [ ] Show flights and calculated prices; allow flight selection.
-- [ ] Provide a control to update and display remaining seats.
+- [x] Build a Streamlit interface.
+- [x] Add origin, destination, and departure date selection.
+- [x] Show multiple flights and calculated prices.
+- [x] Allow filtering/ranking by useful criteria such as price and departure time.
+- [x] Provide a control to update and display remaining seats.
+- [x] Demonstrate how changing an operational input such as seats_remaining can
+      change the calculated fare.
 
 ### Testing
 
