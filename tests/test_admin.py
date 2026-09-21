@@ -46,6 +46,14 @@ class AdminOperationsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             add_flight(data)
 
+    def test_delete_flight(self):
+        data = self.new_flight_data("PA-TEST-DELETE")
+        add_flight(data)
+        self.assertIsNotNone(db.get_flight_by_id(data["flight_id"]))
+        self.assertTrue(db.delete_flight(data["flight_id"]))
+        self.assertIsNone(db.get_flight_by_id(data["flight_id"]))
+        self.assertFalse(db.delete_flight(data["flight_id"]))
+
     def test_minimum_fare_is_calculated_and_checked(self):
         data = self.new_flight_data("PA-TEST-MINIMUM")
         data.pop("minimum_fare")
@@ -58,12 +66,42 @@ class AdminOperationsTests(unittest.TestCase):
             add_flight(invalid)
         self.assertIsNone(db.get_flight_by_id(invalid["flight_id"]))
 
+    def test_invalid_base_fare_is_rejected(self):
+        cases = (
+            ("PA-TEST-NO-BASE", None),
+            ("PA-TEST-TEXT-BASE", "not-a-number"),
+            ("PA-TEST-NAN-BASE", float("nan")),
+        )
+        for flight_id, base_fare in cases:
+            with self.subTest(flight_id=flight_id):
+                data = self.new_flight_data(flight_id)
+                data.pop("minimum_fare")
+                if base_fare is None:
+                    data.pop("base_fare")
+                else:
+                    data["base_fare"] = base_fare
+                with self.assertRaises(ValueError):
+                    add_flight(data)
+                self.assertIsNone(db.get_flight_by_id(flight_id))
+
     def test_invalid_new_flight_is_rejected(self):
         data = self.new_flight_data("PA-TEST-INVALID")
         data["seats_remaining"] = data["seat_capacity"] + 1
         with self.assertRaises(ValueError):
             add_flight(data)
         self.assertIsNone(db.get_flight_by_id(data["flight_id"]))
+
+    def test_noncanonical_date_or_time_is_rejected(self):
+        for flight_id, field, value in (
+            ("PA-TEST-DATE-FORMAT", "flight_date", "2027-1-03"),
+            ("PA-TEST-TIME-FORMAT", "departure_time", "6:00"),
+        ):
+            with self.subTest(field=field):
+                data = self.new_flight_data(flight_id)
+                data[field] = value
+                with self.assertRaises(ValueError):
+                    add_flight(data)
+                self.assertIsNone(db.get_flight_by_id(flight_id))
 
     def test_set_seats_persists_and_checks_capacity(self):
         flight_id = "PA000001"

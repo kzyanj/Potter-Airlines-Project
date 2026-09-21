@@ -58,7 +58,21 @@ def get_flight_dates(origin: str, destination: str, as_of: datetime | None = Non
 def search_flights(origin: str, destination: str, flight_date: str, as_of: datetime | None = None):
     """Return (Flight, price) pairs sorted by NumPy-calculated fare and time."""
     # --- Step 1: Check the requested date and set the time of the search. ---
-    datetime.strptime(flight_date, "%Y-%m-%d")
+    if not isinstance(origin, str) or not isinstance(destination, str):
+        raise ValueError("Origin and destination must be city names")
+    origin, destination = origin.strip(), destination.strip()
+    if not origin or not destination or origin == destination:
+        raise ValueError("Choose different, non-empty origin and destination cities")
+    if not isinstance(flight_date, str):
+        raise ValueError("flight_date must use YYYY-MM-DD")
+    try:
+        parsed_date = datetime.strptime(flight_date, "%Y-%m-%d")
+    except ValueError as error:
+        raise ValueError("flight_date must use a valid YYYY-MM-DD date") from error
+    if parsed_date.strftime("%Y-%m-%d") != flight_date:
+        raise ValueError("flight_date must use YYYY-MM-DD")
+    if as_of is not None and not isinstance(as_of, datetime):
+        raise ValueError("as_of must be a datetime")
     as_of = as_of or datetime.now()
 
     # --- Step 2: Load flights on that route and date that still have seats. ---

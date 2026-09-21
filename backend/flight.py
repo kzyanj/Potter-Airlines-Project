@@ -32,7 +32,10 @@ class Flight:
             raise ValueError("Flight ID, origin, and destination are required")
         if self.origin == self.destination:
             raise ValueError("Origin and destination must differ")
-        datetime.strptime(f"{self.flight_date} {self.departure_time}", "%Y-%m-%d %H:%M")
+        departure = datetime.strptime(f"{self.flight_date} {self.departure_time}", "%Y-%m-%d %H:%M")
+        if (departure.strftime("%Y-%m-%d") != self.flight_date
+                or departure.strftime("%H:%M") != self.departure_time):
+            raise ValueError("flight_date must use YYYY-MM-DD and departure_time must use HH:MM")
         if self.route_popularity not in {"High", "Medium", "Low"}:
             raise ValueError("Invalid route popularity")
         if self.seat_capacity <= 0 or not 0 <= self.seats_remaining <= self.seat_capacity:
