@@ -42,7 +42,7 @@ class SearchTests(unittest.TestCase):
             "flight_id": flight_id, "origin": origin, "destination": destination,
             "flight_date": date, "departure_time": time, "route_popularity": "High",
             "seat_capacity": 100, "seats_remaining": seats,
-            "base_fare": 100.0, "minimum_fare": 75.0, "maximum_fare": 250.0,
+            "base_fare": 100.0, "minimum_fare": 80.0, "maximum_fare": 250.0,
         })
 
     def test_filter_choices_follow_route_date_and_availability(self):
@@ -105,8 +105,7 @@ class SearchTests(unittest.TestCase):
     def test_vectorized_fares_enforce_both_price_limits(self):
         from test_flight_pricing import make_flight
 
-        # The custom 80 minimum exercises the pricing engine's configurable
-        # bounds; the administrator's default remains 75% of base fare.
+        # Strong discounts trigger the standard 80%-of-base minimum.
         flights = [
             make_flight(flight_date="2027-02-20", route_popularity="Low",
                         seats_remaining=100, minimum_fare=80),

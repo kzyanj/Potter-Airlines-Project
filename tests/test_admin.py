@@ -40,6 +40,31 @@ class AdminOperationsTests(unittest.TestCase):
         stored = db.get_flight_by_id(created.flight_id)
         self.assertEqual(stored, tuple(data[field] for field in init_db.FIELDS))
 
+    def test_minimum_policy_rounding_and_rejects_old_percentage(self):
+        data = self.new_flight_data("PA-TEST-ROUNDING")
+        data.update(base_fare=100.03, maximum_fare=200)
+        data.pop("minimum_fare")
+        self.assertEqual(add_flight(data).minimum_fare, 80.02)
+        data["flight_id"] = "PA-TEST-OLD-POLICY"
+        data["minimum_fare"] = 75.02
+        with self.assertRaisesRegex(ValueError, "0.80"):
+            add_flight(data)
+        self.assertIsNone(db.get_flight_by_id(data["flight_id"]))
+
+    def test_migration_preserves_other_fields_and_is_repeatable(self):
+        from database.migrate_minimum_fares import migrate_minimum_fares
+
+        data = self.new_flight_data("PA-TEST-MIGRATION")
+        data.update(base_fare=100.03, minimum_fare=75.02, maximum_fare=200,
+                    seats_remaining=17)
+        db.insert_flight(data)
+        before = db.get_flight_by_id(data["flight_id"])
+        self.assertGreaterEqual(migrate_minimum_fares(), 1)
+        after = db.get_flight_by_id(data["flight_id"])
+        self.assertEqual(after[9], 80.02)
+        self.assertEqual(after[:9] + after[10:], before[:9] + before[10:])
+        self.assertEqual(migrate_minimum_fares(), 0)
+
     def test_duplicate_id_is_rejected(self):
         data = self.new_flight_data("PA-TEST-DUPLICATE")
         add_flight(data)
@@ -58,8 +83,8 @@ class AdminOperationsTests(unittest.TestCase):
         data = self.new_flight_data("PA-TEST-MINIMUM")
         data.pop("minimum_fare")
         added = add_flight(data)
-        self.assertEqual(added.minimum_fare, 97.50)
-        self.assertEqual(db.get_flight_by_id(added.flight_id)[9], 97.50)
+        self.assertEqual(added.minimum_fare, 104.00)
+        self.assertEqual(db.get_flight_by_id(added.flight_id)[9], 104.00)
         invalid = self.new_flight_data("PA-TEST-WRONG-MINIMUM")
         invalid["minimum_fare"] = 100.00
         with self.assertRaises(ValueError):

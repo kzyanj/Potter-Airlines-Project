@@ -28,7 +28,7 @@ class CliTests(unittest.TestCase):
                 flight_id=flight_id, origin="Toronto", destination="Montreal",
                 flight_date="2026-10-02", departure_time="12:00", route_popularity="Medium",
                 seat_capacity=100, seats_remaining=seats, base_fare=100.0,
-                minimum_fare=75.0, maximum_fare=250.0,
+                minimum_fare=80.0, maximum_fare=250.0,
             ))
         self.args = ["--origin", "Toronto", "--destination", "Montreal",
                      "--date", "2026-10-02", "--as-of", "2026-09-20"]
@@ -47,7 +47,9 @@ class CliTests(unittest.TestCase):
                 text = output.getvalue()
                 for expected in ("2 flights", "90 days before", "INSERT:", "SELECT:",
                                  "seat factor 1.05 → 1.15", "fare 94.50 → 103.50",
-                                 "Expected invalid update rejected", "DELETE:"):
+                                 "Expected invalid update rejected", "DELETE:",
+                                 "Calculated fare: 76.30 → Minimum fare applied: 80.00",
+                                 "Calculated fare: 223.93 → Maximum fare applied: 150.00"):
                     self.assertIn(expected, text)
                 self.assertEqual(self.rows(), original)
 
@@ -91,4 +93,16 @@ class CliTests(unittest.TestCase):
             self.assertEqual(main(args + ["--demo-crud"]), 0)
         self.assertIn("No available future flights", output.getvalue())
         self.assertIn("DELETE:", output.getvalue())
+        self.assertEqual(self.rows(), original)
+
+    def test_limits_demo_without_search_results_does_not_modify_database(self):
+        args = self.args.copy()
+        args[args.index("--destination") + 1] = "Unknown"
+        original = self.rows()
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(main(args + ["--demo-pricing"]), 0)
+        self.assertIn("Minimum fare applied: 80.00", output.getvalue())
+        self.assertIn("Maximum fare applied: 150.00", output.getvalue())
+        self.assertNotIn("Simulated fare calculation for", output.getvalue())
         self.assertEqual(self.rows(), original)

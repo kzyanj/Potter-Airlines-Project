@@ -37,6 +37,33 @@ def show_pricing_demo(flight):
         )
 
 
+def show_fare_limits_demo():
+    """Use fixed in-memory scenarios to demonstrate both fare limits."""
+    print("\nFare limits demonstration (fixed examples; no database changes):")
+    for label, date, days, popularity, seats in (
+        ("Minimum", "2027-02-20", 90, "Low", 100),
+        ("Maximum", "2026-12-20", 1, "High", 1),
+    ):
+        flight = Flight(
+            flight_id=f"DEMO-{label.upper()}", origin="Toronto", destination="Montreal",
+            flight_date=date, departure_time="12:00", route_popularity=popularity,
+            seat_capacity=100, seats_remaining=seats, base_fare=100.0,
+            minimum_fare=80.0, maximum_fare=150.0,
+        )
+        result = calculate_price(flight, flight.departure - timedelta(days=days))
+        raw = flight.base_fare * result.route_factor
+        raw *= result.seats_factor * result.season_factor * result.days_until_flight_factor
+        limit = flight.minimum_fare if label == "Minimum" else flight.maximum_fare
+        assert raw < limit if label == "Minimum" else raw > limit
+        assert result.price == limit
+        print(f"  {label} example: departure {date}, {days} days before, "
+              f"{popularity} popularity, seats {seats}/100")
+        print(f"  100.00 × route {result.route_factor:.2f} "
+              f"× seats {result.seats_factor:.2f} × season {result.season_factor:.2f} "
+              f"× days {result.days_until_flight_factor:.2f}")
+        print(f"  Calculated fare: {raw:.2f} → {label} fare applied: {result.price:.2f}")
+
+
 def show_database_demo(as_of):
     """Demonstrate CRUD and a seat-price boundary using a temporary flight."""
     departure = as_of + timedelta(days=45)
@@ -94,7 +121,7 @@ def main(argv=None):
     parser.add_argument("--as-of", type=parse_date, help="Pricing date, YYYY-MM-DD (default: today)")
     parser.add_argument(
         "--demo-pricing", action="store_true",
-        help="Compare one flight's fare at five simulated search dates",
+        help="Compare five booking dates and demonstrate minimum/maximum fare limits",
     )
     parser.add_argument(
         "--demo-crud", "--demo-update", dest="demo_crud", action="store_true",
@@ -113,6 +140,8 @@ def run(args):
     results = search_flights(args.origin, args.destination, args.date.date().isoformat(), as_of)
     if not results:
         print("No available future flights match this search.")
+        if args.demo_pricing:
+            show_fare_limits_demo()
         if args.demo_crud:
             show_database_demo(as_of)
         return 0
@@ -128,6 +157,7 @@ def run(args):
 
     if args.demo_pricing:
         show_pricing_demo(results[0][0])
+        show_fare_limits_demo()
 
     if args.demo_crud:
         show_database_demo(as_of)

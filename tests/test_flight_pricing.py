@@ -19,7 +19,7 @@ def make_flight(**changes):
         "seat_capacity": 100,
         "seats_remaining": 40,
         "base_fare": 100.0,
-        "minimum_fare": 75.0,
+        "minimum_fare": 80.0,
         "maximum_fare": 250.0,
     }
     data.update(changes)
