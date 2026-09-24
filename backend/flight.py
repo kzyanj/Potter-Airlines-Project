@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from math import isfinite
 
 
 @dataclass(frozen=True)
@@ -38,8 +39,23 @@ class Flight:
             raise ValueError("flight_date must use YYYY-MM-DD and departure_time must use HH:MM")
         if self.route_popularity not in {"High", "Medium", "Low"}:
             raise ValueError("Invalid route popularity")
+        # bool is an int subclass, but True/False are not valid seat counts.
+        for name in ("seat_capacity", "seats_remaining"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise ValueError(f"{name} must be an integer")
         if self.seat_capacity <= 0 or not 0 <= self.seats_remaining <= self.seat_capacity:
             raise ValueError("Seats must be between zero and capacity")
+        for name in ("minimum_fare", "base_fare", "maximum_fare"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError(f"{name} must be a finite number")
+            try:
+                finite = isfinite(value)
+            except OverflowError:
+                finite = False
+            if not finite:
+                raise ValueError(f"{name} must be a finite number")
         if not 0 <= self.minimum_fare <= self.base_fare <= self.maximum_fare:
             raise ValueError("Fare bounds are invalid")
 

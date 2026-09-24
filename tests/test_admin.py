@@ -116,6 +116,41 @@ class AdminOperationsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             db.set_seats("MISSING-FLIGHT", 1)
 
+    def test_seat_updates_reject_invalid_types_without_changing_data(self):
+        flight_id = "PA000001"
+        original = db.get_flight_by_id(flight_id)
+        for update in (db.set_seats, db.update_seats):
+            for value in (1.5, 1.0, True, False, "1", None, float("nan"), float("inf")):
+                with self.subTest(operation=update.__name__, value=value):
+                    with self.assertRaisesRegex(ValueError, "must be an integer"):
+                        update(flight_id, value)
+                    self.assertEqual(db.get_flight_by_id(flight_id), original)
+
+    def test_update_seats_persists_and_checks_bounds(self):
+        flight_id = "PA000001"
+        capacity = db.get_flight_by_id(flight_id)[6]
+        db.set_seats(flight_id, 1)
+        for change, expected in ((-1, 0), (0, 0), (capacity, capacity)):
+            self.assertEqual(db.update_seats(flight_id, change), expected)
+            self.assertEqual(db.get_flight_by_id(flight_id)[7], expected)
+        for change in (1, -(capacity + 1)):
+            with self.assertRaises(ValueError):
+                db.update_seats(flight_id, change)
+            self.assertEqual(db.get_flight_by_id(flight_id)[7], capacity)
+        with self.assertRaises(ValueError):
+            db.update_seats("MISSING-FLIGHT", 1)
+
+    def test_add_rejects_invalid_seats_and_nonfinite_fares_without_inserting(self):
+        for field, value in (("seat_capacity", 100.5), ("seats_remaining", 1.5),
+                             ("seats_remaining", True), ("maximum_fare", float("inf")),
+                             ("maximum_fare", float("nan")), ("minimum_fare", float("inf"))):
+            with self.subTest(field=field, value=value):
+                data = self.new_flight_data("PA-TEST-BAD-NUMBER")
+                data[field] = value
+                with self.assertRaises(ValueError):
+                    add_flight(data)
+                self.assertIsNone(db.get_flight_by_id(data["flight_id"]))
+
 
 class DatabaseInitializationTests(unittest.TestCase):
     def test_existing_database_survives_normal_run_and_failed_reset(self):
