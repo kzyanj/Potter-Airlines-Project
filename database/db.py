@@ -55,6 +55,8 @@ def insert_flight(flight):
 
 def update_seats(flight_id, seat_change):
     """Adjust remaining seats, keeping the result between zero and capacity."""
+    if isinstance(seat_change, bool) or not isinstance(seat_change, int):
+        raise ValueError("seat_change must be an integer")
     with get_connection() as connection:
         row = connection.execute(
             "SELECT seats_remaining, seat_capacity FROM flights WHERE flight_id = ?", (flight_id,)

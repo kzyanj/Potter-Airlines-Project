@@ -1,4 +1,4 @@
-"""Dynamic fares using the team's six-factor pricing table."""
+"""Dynamic fares using the team's four-factor pricing table."""
 
 from dataclasses import dataclass
 from datetime import datetime
@@ -6,7 +6,55 @@ from math import floor, isfinite
 
 from .flight import Flight
 
-ROUTE_FACTORS = {"Low": 0.95, "Medium": 1.00, "High": 1.10}
+# Fare = base fare × route × seats × season × days until flight,
+# then apply minimum/maximum fare limits and round to two decimal places.
+# A factor below 1 discounts the fare; above 1 increases it; 1 leaves it unchanged.
+
+# Route popularity: Low = 0.97, Medium = 1.00, High = 1.06.
+ROUTE_FACTORS = {"Low": 0.97, "Medium": 1.00, "High": 1.06}
+
+# Seats remaining / capacity: Critical (0–5%] = 1.30,
+# Very Low (5–10%] = 1.22, Low (10–20%] = 1.15,
+# Moderate (20–40%] = 1.05, High (40–65%] = 0.97,
+# Very High (65–100%] = 0.92. Zero seats means no ticket is available.
+# Each tuple is (inclusive upper bound, multiplier); the first match wins.
+# Use actual fractions without rounding; (a–b] means greater than a, up to b.
+SEAT_FACTOR_BANDS = ((0.05, 1.30), (0.10, 1.22), (0.20, 1.15),
+                     (0.40, 1.05), (0.65, 0.97), (1.00, 0.92))
+
+# Calendar days until departure: Last Minute (0–3) = 1.30,
+# Soon (4–14) = 1.15, Near Term (15–30) = 1.05,
+# Standard (31–60) = 1.00, Very Early (61+) = 0.95.
+# Each tuple is (inclusive upper bound in days, multiplier).
+DAYS_FACTOR_BANDS = ((3, 1.30), (14, 1.15), (30, 1.05), (60, 1.00))
+VERY_EARLY_FACTOR = 0.95
+
+# Seasonality uses the departure date, with inclusive date ranges:
+# Low: Jan 6–Mar 31 and Nov 1–Dec 19 = 0.90.
+# Regular: Apr 1–Jun 24 and Sep 1–Oct 31 = 1.00.
+# Peak: Jun 25–Aug 31 = 1.12; Peak Holiday: Dec 20–Jan 5 = 1.25.
+
+
+def season_factor_for(departure: datetime) -> float:
+    """Return the seasonal multiplier for the flight's departure date.
+
+    This factor multiplies the base fare alongside the other three factors.
+    Date ranges include both endpoints and repeat every year.
+    """
+    # Compare (month, day) pairs so the rule does not depend on the year.
+    month_day = (departure.month, departure.day)
+    # Peak Holiday: Dec 20–Jan 5, a 25% increase (1.25×).
+    # The range crosses New Year, so either side of the year qualifies.
+    if month_day >= (12, 20) or month_day <= (1, 5):
+        return 1.25
+    # Low Season: Jan 6–Mar 31 or Nov 1–Dec 19, a 10% discount (0.90×).
+    if (1, 6) <= month_day <= (3, 31) or (11, 1) <= month_day <= (12, 19):
+        return 0.90
+    # Peak Season: Jun 25–Aug 31, a 12% increase (1.12×).
+    if (6, 25) <= month_day <= (8, 31):
+        return 1.12
+    # Regular Season: Apr 1–Jun 24 or Sep 1–Oct 31, no adjustment (1.00×).
+    return 1.00
 
 
 @dataclass(frozen=True)
@@ -14,15 +62,13 @@ class PriceResult:
     flight_id: str
     price: float
     route_factor: float
-    day_factor: float
-    time_of_day_factor: float
     seats_factor: float
     season_factor: float
     days_until_flight_factor: float
 
 
 def calculate_price(flight: Flight, as_of: datetime | None = None) -> PriceResult:
-    """Apply all six factors and bound the result by minimum and maximum fare.
+    """Apply all four factors and bound the result by minimum and maximum fare.
 
     Days until flight uses calendar dates: today is day 0, tomorrow is day 1.
     """
@@ -33,58 +79,25 @@ def calculate_price(flight: Flight, as_of: datetime | None = None) -> PriceResul
     if departure <= as_of:
         raise ValueError("Cannot price a departed flight")
 
-    # Route Popularity factor: Low 0.95, Medium 1.00, High 1.10.
+    if flight.seats_remaining == 0:
+        raise ValueError("No ticket available: flight is sold out")
+
     route_factor = ROUTE_FACTORS[flight.route_popularity]
-
-    # Day of Week factor: weekdays 1.00; Saturday and Sunday 1.05.
-    day_factor = 1.05 if departure.weekday() >= 5 else 1.00
-
-    # Time of Day: 9:00 PM–5:59 AM (overnight) = 0.90.
-    # Time of Day: 6:00 AM–4:59 PM (daytime) = 1.00.
-    # Time of Day: 5:00 PM–8:59 PM (evening) = 1.05.
-    hour = departure.hour
-    time_of_day_factor = 0.90 if hour >= 21 or hour < 6 else 1.00 if hour < 17 else 1.05
-
-    # Seats Remaining: 51–100% (high availability) = 0.95.
-    # Seats Remaining: 21–50% (moderate availability) = 1.00.
-    # Seats Remaining: 11–20% (low availability) = 1.10.
-    # Seats Remaining: 0–10% (very low availability) = 1.25.
-    remaining_fraction = flight.seat_fraction
-    seats_factor = (
-        1.25 if remaining_fraction <= 0.10 else
-        1.10 if remaining_fraction <= 0.20 else
-        1.00 if remaining_fraction <= 0.50 else 0.95
-    )
-    # Seasonality factor
-    # Seasonality: Jan 6–Mar 31 (low season) = 0.90.
-    # Seasonality: Apr 1–Jun 14 (regular) = 1.00.
-    # Seasonality: Jun 15–Aug 31 (peak) = 1.10.
-    # Seasonality: Sep 1–Dec 19 (regular) = 1.00.
-    # Seasonality: Dec 20–Jan 5 (peak holiday) = 1.20.
-    month_day = (departure.month, departure.day)
-    if month_day >= (12, 20) or month_day <= (1, 5):
-        season_factor = 1.20
-    elif (1, 6) <= month_day <= (3, 31):
-        season_factor = 0.90
-    elif (6, 15) <= month_day <= (8, 31):
-        season_factor = 1.10
-    else:
-        season_factor = 1.00
-
-    # Days Until Flight factor: 0–3, 4–14, 15–30, or 31+ calendar days.
+    seats_factor = next(factor for upper, factor in SEAT_FACTOR_BANDS
+                        if flight.seat_fraction <= upper)
+    season_factor = season_factor_for(departure)
+    # Calendar days: today is day 0, regardless of departure time.
     days = (departure.date() - as_of.date()).days
-    days_until_flight_factor = 1.30 if days <= 3 else 1.15 if days <= 14 else 1.00 if days <= 30 else 0.95
+    days_until_flight_factor = next(
+        (factor for upper, factor in DAYS_FACTOR_BANDS if days <= upper),
+        VERY_EARLY_FACTOR,
+    )
 
-    # Start with base_fare and multiply six factors:
-    # route popularity, weekday/weekend, departure time, seat availability,
-    # season, and days until departure.
-    # Values below 1 discount the fare; values above 1 increase it.
-    # After multiplication, apply the fare limits and round to two decimals.
-    raw = flight.base_fare * route_factor * day_factor * time_of_day_factor
+    raw = flight.base_fare * route_factor
     raw *= seats_factor * season_factor * days_until_flight_factor
     bounded = min(flight.maximum_fare, max(flight.minimum_fare, raw))
     price = floor(bounded * 100 + 0.5 + 1e-9) / 100
     return PriceResult(
-        flight.flight_id, price, route_factor, day_factor, time_of_day_factor,
+        flight.flight_id, price, route_factor,
         seats_factor, season_factor, days_until_flight_factor,
     )

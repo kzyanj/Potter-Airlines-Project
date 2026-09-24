@@ -4,6 +4,10 @@ from datetime import datetime
 
 from database.db import get_connection
 from .flight import Flight
+from .pricing import (
+    ROUTE_FACTORS, SEAT_FACTOR_BANDS, DAYS_FACTOR_BANDS,
+    VERY_EARLY_FACTOR, season_factor_for,
+)
 
 FLIGHT_COLUMNS = (
     "flight_id, origin, destination, flight_date, departure_time, route_popularity, "
@@ -108,6 +112,8 @@ def analyze_fares(flights: list[Flight], as_of: datetime | None = None):
     as_of = as_of or datetime.now()
     if any(flight.departure <= as_of for flight in flights):
         raise ValueError("Cannot price a departed flight")
+    if any(flight.seats_remaining == 0 for flight in flights):
+        raise ValueError("No ticket available: flight is sold out")
     if not flights:
         return np.array([], dtype=float)
     departures = [flight.departure for flight in flights]
@@ -120,28 +126,17 @@ def analyze_fares(flights: list[Flight], as_of: datetime | None = None):
     if not np.all(np.isfinite(minimum)) or not np.all(np.isfinite(base)) or not np.all(np.isfinite(maximum)):
         raise ValueError("Fares must be finite")
 
-    route_factor = np.array([{"Low": 0.95, "Medium": 1.00, "High": 1.10}[flight.route_popularity] for flight in flights])
-    weekdays = np.array([departure.weekday() for departure in departures])
-    day_factor = np.where(weekdays >= 5, 1.05, 1.00)
-    hours = np.array([departure.hour for departure in departures])
-    time_of_day_factor = np.where((hours >= 21) | (hours < 6), 0.90, np.where(hours < 17, 1.00, 1.05))
-
+    route_factor = np.array([ROUTE_FACTORS[flight.route_popularity] for flight in flights])
     seat_fraction = remaining / capacity
     seats_factor = np.select(
-        [seat_fraction <= 0.10, seat_fraction <= 0.20, seat_fraction <= 0.50],
-        [1.25, 1.10, 1.00], default=0.95,
+        [seat_fraction <= upper for upper, _ in SEAT_FACTOR_BANDS],
+        [factor for _, factor in SEAT_FACTOR_BANDS],
     )
-    month_days = np.array([departure.month * 100 + departure.day for departure in departures])
-    season_factor = np.select(
-        [(month_days >= 1220) | (month_days <= 105),
-         (month_days >= 106) & (month_days <= 331),
-         (month_days >= 615) & (month_days <= 831)],
-        [1.20, 0.90, 1.10], default=1.00,
-    )
+    season_factor = np.array([season_factor_for(departure) for departure in departures])
     days_until_flight_factor = np.select(
-        [days <= 3, days <= 14, days <= 30],
-        [1.30, 1.15, 1.00], default=0.95,
+        [days <= upper for upper, _ in DAYS_FACTOR_BANDS],
+        [factor for _, factor in DAYS_FACTOR_BANDS], default=VERY_EARLY_FACTOR,
     )
-    raw = base * route_factor * day_factor * time_of_day_factor
+    raw = base * route_factor
     raw *= seats_factor * season_factor * days_until_flight_factor
     return np.floor(np.clip(raw, minimum, maximum) * 100 + 0.5 + 1e-9) / 100
