@@ -53,6 +53,24 @@ class CliTests(unittest.TestCase):
                     self.assertIn(expected, text)
                 self.assertEqual(self.rows(), original)
 
+    def test_sold_out_results_and_pricing_demo(self):
+        db.set_seats("CLI-B", 0)
+        for all_sold in (False, True):
+            with self.subTest(all_sold=all_sold):
+                if all_sold:
+                    db.set_seats("CLI-A", 0)
+                output = io.StringIO()
+                with redirect_stdout(output):
+                    self.assertEqual(main(self.args + ["--demo-pricing"]), 0)
+                text = output.getvalue()
+                self.assertIn("2 flights", text)
+                self.assertIn("CLI-B  12:00  seats 0/100  Sold out", text)
+                if all_sold:
+                    self.assertNotIn("Fare range:", text)
+                    self.assertNotIn("Simulated fare calculation for", text)
+                else:
+                    self.assertIn("Fare range: 111.55–111.55; average: 111.55", text)
+
     def test_demo_cleans_up_if_pricing_fails(self):
         original = self.rows()
         with patch("backend.cli.calculate_price", side_effect=ValueError("pricing failed")):
@@ -91,7 +109,7 @@ class CliTests(unittest.TestCase):
         output = io.StringIO()
         with redirect_stdout(output):
             self.assertEqual(main(args + ["--demo-crud"]), 0)
-        self.assertIn("No available future flights", output.getvalue())
+        self.assertIn("No future flights", output.getvalue())
         self.assertIn("DELETE:", output.getvalue())
         self.assertEqual(self.rows(), original)
 

@@ -6,7 +6,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 
-from backend.admin import add_flight
+from backend.admin import add_flight, update_capacity
 from database import db, init_db
 
 
@@ -39,6 +39,38 @@ class AdminOperationsTests(unittest.TestCase):
         created = add_flight(data)
         stored = db.get_flight_by_id(created.flight_id)
         self.assertEqual(stored, tuple(data[field] for field in init_db.FIELDS))
+
+    def test_update_capacity_preserves_other_fields(self):
+        data = self.new_flight_data("PA-TEST-CAPACITY")
+        data.update(seat_capacity=100, seats_remaining=20)
+        add_flight(data)
+        before = db.get_flight_by_id(data["flight_id"])
+        for capacity in (150, 20, 20):
+            self.assertEqual(update_capacity(data["flight_id"], capacity), capacity)
+            after = db.get_flight_by_id(data["flight_id"])
+            self.assertEqual(after[6], capacity)
+            self.assertEqual(after[:6] + after[7:], before[:6] + before[7:])
+
+    def test_update_capacity_for_sold_out_flight(self):
+        data = self.new_flight_data("PA-TEST-SOLD-OUT-CAPACITY")
+        data.update(seat_capacity=100, seats_remaining=0)
+        add_flight(data)
+        self.assertEqual(update_capacity(data["flight_id"], 1), 1)
+        self.assertEqual(db.get_flight_by_id(data["flight_id"])[6:8], (1, 0))
+
+    def test_invalid_capacity_does_not_change_flight(self):
+        data = self.new_flight_data("PA-TEST-INVALID-CAPACITY")
+        data.update(seat_capacity=100, seats_remaining=20)
+        add_flight(data)
+        before = db.get_flight_by_id(data["flight_id"])
+        for capacity in (0, -1, 19, 1.5, 100.0, True, False, "100", None,
+                         float("nan"), float("inf"), 2 ** 63):
+            with self.subTest(capacity=capacity):
+                with self.assertRaises(ValueError):
+                    update_capacity(data["flight_id"], capacity)
+                self.assertEqual(db.get_flight_by_id(data["flight_id"]), before)
+        with self.assertRaisesRegex(ValueError, "No flight found"):
+            update_capacity("MISSING-FLIGHT", 100)
 
     def test_minimum_policy_rounding_and_rejects_old_percentage(self):
         data = self.new_flight_data("PA-TEST-ROUNDING")

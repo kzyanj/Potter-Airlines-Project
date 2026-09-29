@@ -75,9 +75,11 @@ python -m backend.cli --origin Toronto --destination Montreal \
 | `--demo-crud` | Demonstrate INSERT, SELECT, UPDATE, and DELETE using a temporary flight. |
 | `--demo-update` | Alias for `--demo-crud`; runs the same complete database demonstration. |
 
-The search reads matching flights from SQLite, excludes sold-out and departed
+The search reads matching flights from SQLite, excludes departed
 flights, and calculates fares in batches with NumPy. Results are sorted by fare
-ascending, then departure time. Output includes each flight's ID, departure time,
+ascending, then departure time. Sold-out flights appear last with zero remaining
+seats and `Sold out`, and their search result price is `None`. Fare statistics
+include only flights with seats remaining. Output includes each flight's ID, departure time,
 remaining seats/capacity, and fare, followed by the minimum, maximum, and average
 fare across the results. Those summary minimum/maximum values describe the
 results, rather than each flight's configured fare limits.
@@ -85,7 +87,7 @@ results, rather than each flight's configured fare limits.
 Use the fixed `--as-of` above to reproduce the example even after the flight date
 has passed in real time. Actual search results depend on saved database edits.
 If there are no matches, the program prints
-`No available future flights match this search.`
+`No future flights match this search.`
 
 ### Run the complete demonstration
 

@@ -52,19 +52,31 @@ class SearchTests(unittest.TestCase):
         self.assertEqual(get_destinations("Unknown", self.as_of), [])
         self.assertEqual(get_flight_dates("Toronto", "Unknown", self.as_of), [])
         after_departure = datetime(2026, 10, 2, 19)
-        self.assertEqual(get_flight_dates("Toronto", "Montreal", after_departure), [])
+        self.assertEqual(get_flight_dates("Toronto", "Montreal", after_departure), ["2026-10-02"])
+        self.assertEqual(get_flight_dates("Toronto", "Montreal", datetime(2026, 10, 2, 21)), [])
 
-    def test_search_excludes_sold_out_and_departed_flights_and_ranks_fares(self):
+    def test_search_includes_sold_out_excludes_departed_and_ranks_fares(self):
         results = search_flights("Toronto", "Montreal", "2026-10-02", self.as_of)
-        self.assertEqual([flight.flight_id for flight, _ in results], ["PA-A", "PA-B"])
+        self.assertEqual([flight.flight_id for flight, _ in results], ["PA-A", "PA-B", "PA-SOLD"])
         self.assertLess(results[0][1], results[1][1])
-        self.assertEqual([price for _, price in results],
-                         [calculate_price(flight, self.as_of).price for flight, _ in results])
+        self.assertEqual([price for _, price in results if price is not None],
+                         [calculate_price(flight, self.as_of).price for flight, price in results if price is not None])
+        self.assertIsNone(results[-1][1])
+        self.assertEqual(results[-1][0].seats_remaining, 0)
         self.assertEqual([flight.flight_id for flight, _ in search_flights(
             "Toronto", "Montreal", "2026-10-02", datetime(2026, 10, 2, 10)
-        )], ["PA-B"])
+        )], ["PA-B", "PA-SOLD"])
         self.assertEqual(search_flights("Toronto", "Unknown", "2026-10-02", self.as_of), [])
-        self.assertEqual(len(search_flights(" Toronto ", " Montreal ", "2026-10-02", self.as_of)), 2)
+        self.assertEqual(len(search_flights(" Toronto ", " Montreal ", "2026-10-02", self.as_of)), 3)
+
+    def test_sold_out_only_route_is_searchable(self):
+        self.add_flight("PA-ONLY-SOLD", "Vancouver", "Calgary", "2026-10-04", "09:00", 0)
+        self.assertIn("Vancouver", get_origins(self.as_of))
+        self.assertEqual(get_destinations("Vancouver", self.as_of), ["Calgary"])
+        self.assertEqual(get_flight_dates("Vancouver", "Calgary", self.as_of), ["2026-10-04"])
+        results = search_flights("Vancouver", "Calgary", "2026-10-04", self.as_of)
+        self.assertEqual([(flight.flight_id, price) for flight, price in results],
+                         [("PA-ONLY-SOLD", None)])
 
     def test_search_rejects_invalid_filters(self):
         invalid_filters = (
@@ -118,7 +130,7 @@ class SearchTests(unittest.TestCase):
 
     def test_vectorized_fares_match_individual_prices_and_check_inputs(self):
         results = search_flights("Toronto", "Montreal", "2026-10-02", self.as_of)
-        flights = [flight for flight, _ in results]
+        flights = [flight for flight, price in results if price is not None]
         fares = analyze_fares(flights, self.as_of)
         np.testing.assert_array_equal(fares, [calculate_price(f, self.as_of).price for f in flights])
         self.assertEqual(analyze_fares([], self.as_of).size, 0)

@@ -13,8 +13,7 @@ FLIGHT_COLUMNS = (
     "flight_id, origin, destination, flight_date, departure_time, route_popularity, "
     "seat_capacity, seats_remaining, base_fare, minimum_fare, maximum_fare"
 )
-FUTURE_AVAILABLE = (
-    "seats_remaining > 0 AND "
+FUTURE_FLIGHTS = (
     "(flight_date > ? OR (flight_date = ? AND departure_time > ?))"
 )
 
@@ -24,11 +23,11 @@ def _future_params(as_of: datetime):
 
 
 def get_origins(as_of: datetime | None = None) -> list[str]:
-    """Cities with at least one future flight that has seats available."""
+    """Cities with at least one future flight, including sold-out flights."""
     as_of = as_of or datetime.now()
     with get_connection() as connection:
         rows = connection.execute(
-            f"SELECT DISTINCT origin FROM flights WHERE {FUTURE_AVAILABLE} ORDER BY origin",
+            f"SELECT DISTINCT origin FROM flights WHERE {FUTURE_FLIGHTS} ORDER BY origin",
             _future_params(as_of),
         ).fetchall()
     return [row[0] for row in rows]
@@ -39,7 +38,7 @@ def get_destinations(origin: str, as_of: datetime | None = None) -> list[str]:
     as_of = as_of or datetime.now()
     with get_connection() as connection:
         rows = connection.execute(
-            f"SELECT DISTINCT destination FROM flights WHERE origin = ? AND {FUTURE_AVAILABLE} "
+            f"SELECT DISTINCT destination FROM flights WHERE origin = ? AND {FUTURE_FLIGHTS} "
             "ORDER BY destination",
             (origin, *_future_params(as_of)),
         ).fetchall()
@@ -47,12 +46,12 @@ def get_destinations(origin: str, as_of: datetime | None = None) -> list[str]:
 
 
 def get_flight_dates(origin: str, destination: str, as_of: datetime | None = None) -> list[str]:
-    """Dates with available flights on the selected route."""
+    """Dates with future flights on the selected route, including sold-out flights."""
     as_of = as_of or datetime.now()
     with get_connection() as connection:
         rows = connection.execute(
             f"SELECT DISTINCT flight_date FROM flights "
-            f"WHERE origin = ? AND destination = ? AND {FUTURE_AVAILABLE} "
+            f"WHERE origin = ? AND destination = ? AND {FUTURE_FLIGHTS} "
             "ORDER BY flight_date",
             (origin, destination, *_future_params(as_of)),
         ).fetchall()
@@ -60,7 +59,7 @@ def get_flight_dates(origin: str, destination: str, as_of: datetime | None = Non
 
 
 def search_flights(origin: str, destination: str, flight_date: str, as_of: datetime | None = None):
-    """Return (Flight, price) pairs sorted by NumPy-calculated fare and time."""
+    """Return (Flight, price) pairs; sold-out flights have price None and sort last."""
     # --- Step 1: Check the requested date and set the time of the search. ---
     if not isinstance(origin, str) or not isinstance(destination, str):
         raise ValueError("Origin and destination must be city names")
@@ -79,11 +78,11 @@ def search_flights(origin: str, destination: str, flight_date: str, as_of: datet
         raise ValueError("as_of must be a datetime")
     as_of = as_of or datetime.now()
 
-    # --- Step 2: Load flights on that route and date that still have seats. ---
+    # --- Step 2: Load all flights on that route and date. ---
     with get_connection() as connection:
         rows = connection.execute(
             f"SELECT {FLIGHT_COLUMNS} FROM flights "
-            "WHERE origin = ? AND destination = ? AND flight_date = ? AND seats_remaining > 0",
+            "WHERE origin = ? AND destination = ? AND flight_date = ?",
             (origin, destination, flight_date),
         ).fetchall()
 
@@ -92,12 +91,16 @@ def search_flights(origin: str, destination: str, flight_date: str, as_of: datet
     flights = [flight for flight in flights if flight.departure > as_of]
 
     # --- Step 4: Calculate all remaining fares together with NumPy. ---
-    prices = analyze_fares(flights, as_of)
+    available = [flight for flight in flights if flight.seats_remaining > 0]
+    prices = analyze_fares(available, as_of)
+    results = [(flight, float(price)) for flight, price in zip(available, prices)]
+    results.extend((flight, None) for flight in flights if flight.seats_remaining == 0)
 
     # --- Step 5: Return flights sorted by fare, then departure time. ---
     return sorted(
-        ((flight, float(price)) for flight, price in zip(flights, prices)),
-        key=lambda result: (result[1], result[0].departure),
+        results,
+        key=lambda result: (result[1] is None, result[1] if result[1] is not None else 0,
+                            result[0].departure),
     )
 
 
