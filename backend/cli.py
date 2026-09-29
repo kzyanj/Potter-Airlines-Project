@@ -139,24 +139,27 @@ def run(args):
     as_of = args.as_of or datetime.now()
     results = search_flights(args.origin, args.destination, args.date.date().isoformat(), as_of)
     if not results:
-        print("No available future flights match this search.")
+        print("No future flights match this search.")
         if args.demo_pricing:
             show_fare_limits_demo()
         if args.demo_crud:
             show_database_demo(as_of)
         return 0
 
-    prices = np.asarray([price for _, price in results])
+    prices = np.asarray([price for _, price in results if price is not None])
     print(f"{len(results)} flights from {args.origin} to {args.destination} on {args.date.date()}:")
     for flight, price in results:
+        fare_text = "Sold out" if price is None else f"fare {price:.2f}"
         print(
             f"  {flight.flight_id}  {flight.departure_time}  "
-            f"seats {flight.seats_remaining}/{flight.seat_capacity}  fare {price:.2f}"
+            f"seats {flight.seats_remaining}/{flight.seat_capacity}  {fare_text}"
         )
-    print(f"Fare range: {prices.min():.2f}–{prices.max():.2f}; average: {prices.mean():.2f}")
+    if prices.size:
+        print(f"Fare range: {prices.min():.2f}–{prices.max():.2f}; average: {prices.mean():.2f}")
 
     if args.demo_pricing:
-        show_pricing_demo(results[0][0])
+        if prices.size:
+            show_pricing_demo(results[0][0])
         show_fare_limits_demo()
 
     if args.demo_crud:

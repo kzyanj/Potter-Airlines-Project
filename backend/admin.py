@@ -5,8 +5,17 @@ from dataclasses import asdict
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Mapping
 
-from database.db import insert_flight
+from database.db import insert_flight, set_capacity
 from .flight import Flight
+
+
+def update_capacity(flight_id: str, seat_capacity: int) -> int:
+    """Save a positive total capacity, at least equal to remaining seats.
+
+    Returns the saved capacity. Remaining seats are unchanged, including for
+    sold-out flights. Raises ValueError for invalid input or a missing flight.
+    """
+    return set_capacity(flight_id, seat_capacity)
 
 
 def add_flight(data: Mapping[str, object]) -> Flight:
