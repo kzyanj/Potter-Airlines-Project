@@ -12,7 +12,7 @@ Run with:  streamlit run frontend/app.py
 """
 
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import streamlit as st
@@ -25,12 +25,25 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from backend.flight import Flight
 from backend.pricing import calculate_price
-from backend.search import get_destinations, get_flight_dates, get_origins, search_flights
+from backend.search import get_destinations, get_origins, search_flights
 from database.db import get_flight_by_id, set_seats
 
 st.set_page_config(page_title="Potter Airlines Revenue Management", layout="wide")
 st.title("Potter Airlines Dynamic Revenue Management System")
 st.caption("Search flights, review calculated fares, and adjust seat inventory.")
+
+MIN_SEARCH_DATE = date(2026, 10, 2)
+MAX_SEARCH_DATE = date(2027, 10, 2)
+SOLD_OUT = "SOLD OUT"
+
+
+def is_sold_out(flight, price):
+    """A flight is sold out when it has no seats or the backend gave no price."""
+    return flight.seats_remaining == 0 or price is None
+
+
+def fare_text(flight, price):
+    return SOLD_OUT if is_sold_out(flight, price) else f"{price:.2f}"
 
 
 def render_search_controls():
@@ -44,7 +57,7 @@ def render_search_controls():
 
     origins = get_origins()
     if not origins:
-        st.warning("No flights with available seats were found in the database.")
+        st.warning("No upcoming flights were found in the database.")
         return None, None, None
     origin = st.selectbox("Origin", origins, key="origin_select")
 
@@ -54,15 +67,15 @@ def render_search_controls():
         return origin, None, None
     destination = st.selectbox("Destination", destinations, key=f"destination_select_{origin}")
 
-    dates = get_flight_dates(origin, destination)
-    if not dates:
-        st.warning(f"No available flight dates from {origin} to {destination}.")
-        return origin, destination, None
-    flight_date = st.selectbox(
-        "Departure date", dates, key=f"date_select_{origin}_{destination}"
+    selected_date = st.date_input(
+        "Departure date",
+        value=MIN_SEARCH_DATE,
+        min_value=MIN_SEARCH_DATE,
+        max_value=MAX_SEARCH_DATE,
+        key="date_input",
     )
-
-    return origin, destination, flight_date
+    # search_flights() expects a YYYY-MM-DD string.
+    return origin, destination, selected_date.isoformat()
 
 
 def render_results(results):
@@ -72,12 +85,15 @@ def render_results(results):
     st.header("Matching flights")
 
     if not results:
-        st.info("No available flights match this search.")
+        st.info("No flights available for the selected route and date.")
         return
 
     sort_choice = st.radio("Sort by", ["Price", "Departure time"], horizontal=True)
     if sort_choice == "Price":
-        sorted_results = sorted(results, key=lambda item: item[1])
+        # Sold-out flights (price None) sort last.
+        sorted_results = sorted(
+            results, key=lambda item: (is_sold_out(*item), item[1] or 0)
+        )
     else:
         sorted_results = sorted(results, key=lambda item: item[0].departure)
 
@@ -90,7 +106,8 @@ def render_results(results):
             "Time": flight.departure_time,
             "Seats remaining": flight.seats_remaining,
             "Capacity": flight.seat_capacity,
-            "Price": round(price, 2),
+            "Fare": fare_text(flight, price),
+            "Status": SOLD_OUT if is_sold_out(flight, price) else "Available",
         }
         for flight, price in sorted_results
     ]
@@ -115,7 +132,8 @@ def render_seat_admin(results, as_of):
 
     st.write(
         f"Current seats remaining: {selected_flight.seats_remaining} of "
-        f"{selected_flight.seat_capacity} — current fare: {current_price:.2f}"
+        f"{selected_flight.seat_capacity} — current fare: "
+        f"{fare_text(selected_flight, current_price)}"
     )
 
     # No max_value here on purpose: set_seats() is the real gatekeeper for
@@ -138,11 +156,14 @@ def render_seat_admin(results, as_of):
             st.success(f"Seats remaining for {selected_id} updated to {int(new_seats)}.")
 
             updated_flight = Flight.from_row(get_flight_by_id(selected_id))
-            updated_price = calculate_price(updated_flight, as_of).price
+            if updated_flight.seats_remaining == 0:
+                updated_text = SOLD_OUT
+            else:
+                updated_text = f"{calculate_price(updated_flight, as_of).price:.2f}"
 
             st.write(
                 f"Recalculated fare for {selected_id}: "
-                f"{current_price:.2f} → {updated_price:.2f} "
+                f"{fare_text(selected_flight, current_price)} → {updated_text} "
                 f"(seats {selected_flight.seats_remaining} → {updated_flight.seats_remaining})"
             )
 
@@ -166,7 +187,7 @@ def main():
         if results:
             render_seat_admin(results, as_of)
         else:
-            st.info("Admin controls appear once a search returns available flights.")
+            st.info("Admin controls appear once a search returns flights.")
 
     # Re-query after any update above, so the table below reflects it.
     results = search_flights(origin, destination, flight_date, as_of)
