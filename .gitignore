@@ -1,1 +1,12 @@
 database/*.db
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# macOS
+.DS_Store
+
+# Local Streamlit secrets
+.streamlit/secrets.toml
