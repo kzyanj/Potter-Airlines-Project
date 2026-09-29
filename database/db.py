@@ -55,6 +55,8 @@ def insert_flight(flight):
 
 def update_seats(flight_id, seat_change):
     """Adjust remaining seats, keeping the result between zero and capacity."""
+    if isinstance(seat_change, bool) or not isinstance(seat_change, int):
+        raise ValueError("seat_change must be an integer")
     with get_connection() as connection:
         row = connection.execute(
             "SELECT seats_remaining, seat_capacity FROM flights WHERE flight_id = ?", (flight_id,)
@@ -88,6 +90,28 @@ def set_seats(flight_id, seats_remaining):
                 raise ValueError(f"No flight found with flight_id {flight_id}")
             raise ValueError(f"Seats must stay between 0 and {row[0]}")
     return seats_remaining
+
+
+def set_capacity(flight_id, seat_capacity):
+    """Set total capacity without changing remaining seats or the source CSV."""
+    if isinstance(seat_capacity, bool) or not isinstance(seat_capacity, int):
+        raise ValueError("seat_capacity must be an integer")
+    if not 0 < seat_capacity <= 9223372036854775807:
+        raise ValueError("seat_capacity must be a positive SQLite integer")
+    with get_connection() as connection:
+        cursor = connection.execute(
+            "UPDATE flights SET seat_capacity = ? "
+            "WHERE flight_id = ? AND seats_remaining <= ?",
+            (seat_capacity, flight_id, seat_capacity),
+        )
+        if cursor.rowcount == 0:
+            row = connection.execute(
+                "SELECT seats_remaining FROM flights WHERE flight_id = ?", (flight_id,)
+            ).fetchone()
+            if row is None:
+                raise ValueError(f"No flight found with flight_id {flight_id}")
+            raise ValueError(f"Capacity must be at least the remaining seats ({row[0]})")
+    return seat_capacity
 
 
 def delete_flight(flight_id):

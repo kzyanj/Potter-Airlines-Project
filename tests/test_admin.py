@@ -6,7 +6,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 
-from backend.admin import add_flight
+from backend.admin import add_flight, update_capacity
 from database import db, init_db
 
 
@@ -40,6 +40,63 @@ class AdminOperationsTests(unittest.TestCase):
         stored = db.get_flight_by_id(created.flight_id)
         self.assertEqual(stored, tuple(data[field] for field in init_db.FIELDS))
 
+    def test_update_capacity_preserves_other_fields(self):
+        data = self.new_flight_data("PA-TEST-CAPACITY")
+        data.update(seat_capacity=100, seats_remaining=20)
+        add_flight(data)
+        before = db.get_flight_by_id(data["flight_id"])
+        for capacity in (150, 20, 20):
+            self.assertEqual(update_capacity(data["flight_id"], capacity), capacity)
+            after = db.get_flight_by_id(data["flight_id"])
+            self.assertEqual(after[6], capacity)
+            self.assertEqual(after[:6] + after[7:], before[:6] + before[7:])
+
+    def test_update_capacity_for_sold_out_flight(self):
+        data = self.new_flight_data("PA-TEST-SOLD-OUT-CAPACITY")
+        data.update(seat_capacity=100, seats_remaining=0)
+        add_flight(data)
+        self.assertEqual(update_capacity(data["flight_id"], 1), 1)
+        self.assertEqual(db.get_flight_by_id(data["flight_id"])[6:8], (1, 0))
+
+    def test_invalid_capacity_does_not_change_flight(self):
+        data = self.new_flight_data("PA-TEST-INVALID-CAPACITY")
+        data.update(seat_capacity=100, seats_remaining=20)
+        add_flight(data)
+        before = db.get_flight_by_id(data["flight_id"])
+        for capacity in (0, -1, 19, 1.5, 100.0, True, False, "100", None,
+                         float("nan"), float("inf"), 2 ** 63):
+            with self.subTest(capacity=capacity):
+                with self.assertRaises(ValueError):
+                    update_capacity(data["flight_id"], capacity)
+                self.assertEqual(db.get_flight_by_id(data["flight_id"]), before)
+        with self.assertRaisesRegex(ValueError, "No flight found"):
+            update_capacity("MISSING-FLIGHT", 100)
+
+    def test_minimum_policy_rounding_and_rejects_old_percentage(self):
+        data = self.new_flight_data("PA-TEST-ROUNDING")
+        data.update(base_fare=100.03, maximum_fare=200)
+        data.pop("minimum_fare")
+        self.assertEqual(add_flight(data).minimum_fare, 80.02)
+        data["flight_id"] = "PA-TEST-OLD-POLICY"
+        data["minimum_fare"] = 75.02
+        with self.assertRaisesRegex(ValueError, "0.80"):
+            add_flight(data)
+        self.assertIsNone(db.get_flight_by_id(data["flight_id"]))
+
+    def test_migration_preserves_other_fields_and_is_repeatable(self):
+        from database.migrate_minimum_fares import migrate_minimum_fares
+
+        data = self.new_flight_data("PA-TEST-MIGRATION")
+        data.update(base_fare=100.03, minimum_fare=75.02, maximum_fare=200,
+                    seats_remaining=17)
+        db.insert_flight(data)
+        before = db.get_flight_by_id(data["flight_id"])
+        self.assertGreaterEqual(migrate_minimum_fares(), 1)
+        after = db.get_flight_by_id(data["flight_id"])
+        self.assertEqual(after[9], 80.02)
+        self.assertEqual(after[:9] + after[10:], before[:9] + before[10:])
+        self.assertEqual(migrate_minimum_fares(), 0)
+
     def test_duplicate_id_is_rejected(self):
         data = self.new_flight_data("PA-TEST-DUPLICATE")
         add_flight(data)
@@ -58,8 +115,8 @@ class AdminOperationsTests(unittest.TestCase):
         data = self.new_flight_data("PA-TEST-MINIMUM")
         data.pop("minimum_fare")
         added = add_flight(data)
-        self.assertEqual(added.minimum_fare, 97.50)
-        self.assertEqual(db.get_flight_by_id(added.flight_id)[9], 97.50)
+        self.assertEqual(added.minimum_fare, 104.00)
+        self.assertEqual(db.get_flight_by_id(added.flight_id)[9], 104.00)
         invalid = self.new_flight_data("PA-TEST-WRONG-MINIMUM")
         invalid["minimum_fare"] = 100.00
         with self.assertRaises(ValueError):
@@ -115,6 +172,41 @@ class AdminOperationsTests(unittest.TestCase):
                 self.assertEqual(db.get_flight_by_id(flight_id)[7], 70)
         with self.assertRaises(ValueError):
             db.set_seats("MISSING-FLIGHT", 1)
+
+    def test_seat_updates_reject_invalid_types_without_changing_data(self):
+        flight_id = "PA000001"
+        original = db.get_flight_by_id(flight_id)
+        for update in (db.set_seats, db.update_seats):
+            for value in (1.5, 1.0, True, False, "1", None, float("nan"), float("inf")):
+                with self.subTest(operation=update.__name__, value=value):
+                    with self.assertRaisesRegex(ValueError, "must be an integer"):
+                        update(flight_id, value)
+                    self.assertEqual(db.get_flight_by_id(flight_id), original)
+
+    def test_update_seats_persists_and_checks_bounds(self):
+        flight_id = "PA000001"
+        capacity = db.get_flight_by_id(flight_id)[6]
+        db.set_seats(flight_id, 1)
+        for change, expected in ((-1, 0), (0, 0), (capacity, capacity)):
+            self.assertEqual(db.update_seats(flight_id, change), expected)
+            self.assertEqual(db.get_flight_by_id(flight_id)[7], expected)
+        for change in (1, -(capacity + 1)):
+            with self.assertRaises(ValueError):
+                db.update_seats(flight_id, change)
+            self.assertEqual(db.get_flight_by_id(flight_id)[7], capacity)
+        with self.assertRaises(ValueError):
+            db.update_seats("MISSING-FLIGHT", 1)
+
+    def test_add_rejects_invalid_seats_and_nonfinite_fares_without_inserting(self):
+        for field, value in (("seat_capacity", 100.5), ("seats_remaining", 1.5),
+                             ("seats_remaining", True), ("maximum_fare", float("inf")),
+                             ("maximum_fare", float("nan")), ("minimum_fare", float("inf"))):
+            with self.subTest(field=field, value=value):
+                data = self.new_flight_data("PA-TEST-BAD-NUMBER")
+                data[field] = value
+                with self.assertRaises(ValueError):
+                    add_flight(data)
+                self.assertIsNone(db.get_flight_by_id(data["flight_id"]))
 
 
 class DatabaseInitializationTests(unittest.TestCase):
