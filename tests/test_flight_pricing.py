@@ -28,6 +28,8 @@ def make_flight(**changes):
 
 class FlightTests(unittest.TestCase):
     def test_seat_counts_require_integers(self):
+        """Reject fractional counts, strings, booleans, None, NaN, and infinity.
+        Accept zero remaining seats and full capacity; bool is not a valid count despite subclassing int."""
         for field in ("seat_capacity", "seats_remaining"):
             for value in (1.5, 100.0, True, False, "100", None, math.nan, math.inf):
                 with self.subTest(field=field, value=value):
@@ -37,6 +39,8 @@ class FlightTests(unittest.TestCase):
             self.assertEqual(make_flight(seats_remaining=remaining).seats_remaining, remaining)
 
     def test_fares_require_finite_numbers(self):
+        """Reject invalid fare types, nonfinite values, and integers too large for finite float conversion.
+        Accept ordinary integer fares and a zero minimum fare."""
         for field in ("minimum_fare", "base_fare", "maximum_fare"):
             for value in (math.nan, math.inf, -math.inf, True, False, "100", None, 10**400):
                 with self.subTest(field=field, value=value):
@@ -46,6 +50,8 @@ class FlightTests(unittest.TestCase):
         self.assertEqual(flight.base_fare, 100)
 
     def test_database_row_and_computed_properties(self):
+        """Reconstruct a Flight from a database row and verify departure time and seat fraction.
+        Reject a missing row or a row that does not contain exactly 11 columns."""
         flight = make_flight()
         self.assertEqual(Flight.from_row(tuple(vars(flight).values())), flight)
         self.assertEqual(flight.departure, datetime(2026, 10, 2, 12))
@@ -56,6 +62,8 @@ class FlightTests(unittest.TestCase):
             Flight.from_row(("too short",))
 
     def test_invalid_flight_fields(self):
+        """Reject empty IDs, identical cities, invalid or noncanonical dates/times, and unknown popularity.
+        Also reject zero capacity, negative or excess seats, and inconsistent fare bounds."""
         invalid_cases = (
             ({"flight_id": ""}, "required"),
             ({"destination": "Toronto"}, "must differ"),
@@ -80,6 +88,8 @@ class PricingTests(unittest.TestCase):
         self.reference = datetime(2026, 9, 20, 12)
 
     def test_route_and_seat_factor_boundaries(self):
+        """Check all route factors and both sides of each remaining-seat percentage threshold.
+        Use capacities of 100 and 200 to verify ratios rather than fixed counts; reject sold-out pricing."""
         for popularity, expected in (("Low", .97), ("Medium", 1), ("High", 1.06)):
             with self.subTest(popularity=popularity):
                 self.assertEqual(calculate_price(make_flight(route_popularity=popularity), self.reference).route_factor, expected)
@@ -96,6 +106,8 @@ class PricingTests(unittest.TestCase):
             calculate_price(make_flight(seats_remaining=0), self.reference)
 
     def test_only_four_factors_determine_price(self):
+        """Verify that only the four specified factors determine the fare.
+        Weekdays, weekends, and departure times add no separate multiplier when those factors match."""
         # Weekday/weekend and morning/evening have no separate multipliers.
         for date in ("2026-10-02", "2026-10-03"):
             for time in ("05:59", "06:00", "17:00", "21:00"):
@@ -103,6 +115,8 @@ class PricingTests(unittest.TestCase):
                 self.assertEqual(result.price, 120.75)  # 100 × 1 × 1.05 × 1 × 1.15
 
     def test_season_and_days_until_flight_boundaries(self):
+        """Check seasonal transitions and booking-day boundaries at 3/4, 14/15, 30/31, and 60/61 days.
+        Include departure later today (day zero) and the holiday season spanning New Year."""
         seasons = (("2027-01-05", 1.25), ("2027-01-06", .90), ("2027-03-31", .90),
                    ("2027-04-01", 1.00), ("2027-06-24", 1.00), ("2027-06-25", 1.12),
                    ("2027-08-31", 1.12), ("2027-09-01", 1.00),
@@ -119,6 +133,8 @@ class PricingTests(unittest.TestCase):
                 self.assertEqual(calculate_price(flight, self.reference).days_until_flight_factor, expected)
 
     def test_fare_bounds_and_invalid_inputs(self):
+        """Clamp discounted fares to the minimum and increased fares to the maximum.
+        Reject departed flights and a fare corrupted to NaN by bypassing the frozen model."""
         cheap = make_flight(flight_date="2027-02-20", departure_time="04:00",
                             route_popularity="Low", seats_remaining=100, minimum_fare=80)
         self.assertEqual(calculate_price(cheap, self.reference).price, 80.0)
@@ -133,6 +149,8 @@ class PricingTests(unittest.TestCase):
             calculate_price(nonfinite, self.reference)
 
     def test_default_uses_system_time(self):
+        """Check that omitting as_of produces a positive fare for a flight two days ahead.
+        This smoke test does not assert the exact clock value or pricing factor."""
         departure = datetime.now() + timedelta(days=2)
         flight = make_flight(flight_date=departure.date().isoformat(),
                              departure_time=departure.strftime("%H:%M"))
