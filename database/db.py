@@ -1,10 +1,15 @@
 """Basic flight operations for the SQLite database."""
 
+import csv
+import os
 import sqlite3
+import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 
 DATABASE_PATH = Path(__file__).resolve().parent / "potter_airlines.db"
+DEFAULT_DATABASE_PATH = DATABASE_PATH
+CSV_PATH = Path(__file__).resolve().parent.parent / "data" / "potter_airline_routes_dataset_regenerated.csv"
 
 
 @contextmanager
@@ -18,6 +23,47 @@ def get_connection():
             yield connection
     finally:
         connection.close()
+
+
+def _sync_seats_to_csv(flight_id, seats_remaining):
+    """Copy a committed seats_remaining value into the matching CSV row.
+
+    SQLite stays the source of truth; this only keeps the CSV in step. Only the
+    seats_remaining cell of the row with this flight_id changes. The CSV is
+    rewritten to a temporary file first and then swapped in, so a failed write
+    cannot leave a half-written CSV. Only the real database syncs, so tests
+    using a temporary database never touch the project CSV.
+    """
+    if DATABASE_PATH != DEFAULT_DATABASE_PATH or not CSV_PATH.exists():
+        return
+    temp_name = None
+    try:
+        with CSV_PATH.open(newline="", encoding="utf-8-sig") as source:
+            reader = csv.reader(source)
+            rows = list(reader)
+        header = rows[0]
+        id_column = header.index("flight_id")
+        seats_column = header.index("seats_remaining")
+        for row in rows[1:]:
+            if row and row[id_column] == flight_id:
+                row[seats_column] = str(seats_remaining)
+                break
+        else:
+            return  # flight only exists in SQLite (e.g. added by an admin)
+        with tempfile.NamedTemporaryFile(
+            "w", newline="", encoding="utf-8", dir=CSV_PATH.parent, suffix=".tmp", delete=False
+        ) as target:
+            temp_name = target.name
+            csv.writer(target, lineterminator="\n").writerows(rows)
+        os.replace(temp_name, CSV_PATH)
+        temp_name = None
+    except Exception as error:
+        raise RuntimeError(
+            f"Seats for {flight_id} were saved in SQLite, but the CSV could not be updated: {error}"
+        ) from error
+    finally:
+        if temp_name is not None:
+            Path(temp_name).unlink(missing_ok=True)
 
 
 def get_flight_by_id(flight_id):
@@ -69,7 +115,9 @@ def update_seats(flight_id, seat_change):
         connection.execute(
             "UPDATE flights SET seats_remaining = ? WHERE flight_id = ?", (new_seats, flight_id)
         )
-        return new_seats
+    # The with-block above has committed the update; only now sync the CSV.
+    _sync_seats_to_csv(flight_id, new_seats)
+    return new_seats
 
 
 def set_seats(flight_id, seats_remaining):
@@ -89,6 +137,8 @@ def set_seats(flight_id, seats_remaining):
             if row is None:
                 raise ValueError(f"No flight found with flight_id {flight_id}")
             raise ValueError(f"Seats must stay between 0 and {row[0]}")
+    # Committed at the end of the with-block; only now sync the CSV.
+    _sync_seats_to_csv(flight_id, seats_remaining)
     return seats_remaining
 
 
