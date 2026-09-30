@@ -46,6 +46,8 @@ class SearchTests(unittest.TestCase):
         })
 
     def test_filter_choices_follow_route_date_and_availability(self):
+        """Build filter choices from future flights and return empty lists for unknown routes.
+        Keep dates with sold-out future flights; remove a date when its last flight reaches departure."""
         self.assertEqual(get_origins(self.as_of), ["Montreal", "Toronto"])
         self.assertEqual(get_destinations("Toronto", self.as_of), ["Montreal", "Ottawa"])
         self.assertEqual(get_flight_dates("Toronto", "Montreal", self.as_of), ["2026-10-02"])
@@ -56,6 +58,8 @@ class SearchTests(unittest.TestCase):
         self.assertEqual(get_flight_dates("Toronto", "Montreal", datetime(2026, 10, 2, 21)), [])
 
     def test_search_includes_sold_out_excludes_departed_and_ranks_fares(self):
+        """Exclude departed flights, sort available fares ascending, and place sold-out flights last with None.
+        Compare individual pricing, handle unknown destinations, and trim surrounding city whitespace."""
         results = search_flights("Toronto", "Montreal", "2026-10-02", self.as_of)
         self.assertEqual([flight.flight_id for flight, _ in results], ["PA-A", "PA-B", "PA-SOLD"])
         self.assertLess(results[0][1], results[1][1])
@@ -70,6 +74,8 @@ class SearchTests(unittest.TestCase):
         self.assertEqual(len(search_flights(" Toronto ", " Montreal ", "2026-10-02", self.as_of)), 3)
 
     def test_sold_out_only_route_is_searchable(self):
+        """Keep cities, dates, and results available when a route has only a sold-out flight.
+        Represent its fare as None rather than incorrectly treating it as a zero-price ticket."""
         self.add_flight("PA-ONLY-SOLD", "Vancouver", "Calgary", "2026-10-04", "09:00", 0)
         self.assertIn("Vancouver", get_origins(self.as_of))
         self.assertEqual(get_destinations("Vancouver", self.as_of), ["Calgary"])
@@ -79,6 +85,8 @@ class SearchTests(unittest.TestCase):
                          [("PA-ONLY-SOLD", None)])
 
     def test_search_rejects_invalid_filters(self):
+        """Reject missing or blank cities, identical endpoints, invalid dates, and an invalid as_of type.
+        Each invalid filter combination must raise ValueError before querying."""
         invalid_filters = (
             (None, "Montreal", "2026-10-02", self.as_of),
             ("Toronto", None, "2026-10-02", self.as_of),
@@ -95,6 +103,8 @@ class SearchTests(unittest.TestCase):
                     search_flights(*filters)
 
     def test_vectorized_pricing_across_factor_boundaries(self):
+        """Compare bulk and individual pricing across 441 season, seat, popularity, and booking-day scenarios.
+        Reject a batch containing a sold-out flight; agreement alone is not independent proof of the rules."""
         from test_flight_pricing import make_flight
 
         flights = []
@@ -115,6 +125,8 @@ class SearchTests(unittest.TestCase):
             analyze_fares([flights[0], make_flight(seats_remaining=0)], self.as_of)
 
     def test_vectorized_fares_enforce_both_price_limits(self):
+        """Force excessive discounts and increases so bulk fares must clamp to 80 and 150.
+        Compare individual pricing to verify both paths apply the same limits."""
         from test_flight_pricing import make_flight
 
         # Strong discounts trigger the standard 80%-of-base minimum.
@@ -129,6 +141,8 @@ class SearchTests(unittest.TestCase):
         self.assertEqual([calculate_price(f, as_of).price for f in flights], [80.0, 150.0])
 
     def test_vectorized_fares_match_individual_prices_and_check_inputs(self):
+        """Match bulk prices against individual prices for available search results.
+        Return an empty array for empty input; reject departed flights and a maximum fare corrupted to NaN."""
         results = search_flights("Toronto", "Montreal", "2026-10-02", self.as_of)
         flights = [flight for flight, price in results if price is not None]
         fares = analyze_fares(flights, self.as_of)

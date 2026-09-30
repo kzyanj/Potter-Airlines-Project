@@ -1,5 +1,5 @@
 flight_id,origin,destination,flight_date,departure_time,route_popularity,seat_capacity,seats_remaining,base_fare,minimum_fare,maximum_fare
-PA000001,Toronto,Montreal,2026-10-02,06:45,High,180,79,130,104.00,235
+PA000001,Toronto,Montreal,2026-10-02,06:45,High,180,180,130,104.00,235
 PA000002,Toronto,Montreal,2026-10-02,10:00,High,180,77,130,104.00,235
 PA000003,Toronto,Montreal,2026-10-02,13:30,High,180,62,130,104.00,235
 PA000004,Toronto,Montreal,2026-10-02,17:15,High,180,42,130,104.00,235
