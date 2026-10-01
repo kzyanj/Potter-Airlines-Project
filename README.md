@@ -300,230 +300,247 @@ and advanced optimization are optional. A connecting-flight search is not requir
 
 ## 1. Project Overview
 
-Potter Airlines is a Python application that calculates explainable, rule-based flight fares. Prices respond to six factors: route popularity, day of the week, departure time, remaining seat availability, seasonality, and days until departure. Each calculated fare is limited by the flight's minimum and maximum fare inputs before rounding to two decimal places.
+Potter Airlines is a Python application for explainable, rule-based flight pricing and seat-inventory management. It calculates fares using four factors: route popularity, remaining seats, seasonality, and days until departure. The calculated amount is constrained by each flight's minimum and maximum fares before rounding to two decimal places.
 
-The application imports fictional flight data into SQLite, searches for available flights by route and date, calculates fares across multiple flights with NumPy, ranks results, and demonstrates validated seat updates. The current runnable interface is a command-line application. The `frontend/` directory is a placeholder; a Streamlit interface is not included. No external API, LLM, or API key is required.
+The project includes a Streamlit administrator interface, a command-line interface, SQLite persistence, a validated `Flight` class, and NumPy-based pricing across multiple flights. Administrators can search flights, compare fares, and update remaining seats to observe the effect on pricing. This is a revenue-management demonstration, not a customer booking or payment system. No external API, LLM, or API key is required.
 
-## 2. Installation and Quick Start
+## 2. Setup and Running the Application
 
-Use Python 3.10 or later. The only declared third-party dependency is `numpy>=1.24,<3`; SQLite support and the test framework come from Python's standard library. The current test suite was verified on Linux with Python 3.13.5 and NumPy 2.3.5.
+Use Python 3.10 or later. The declared third-party dependencies are `numpy>=1.24,<3` and `streamlit>=1.30,<2`. SQLite support and `unittest` are provided by Python's standard library.
 
-Open a terminal in the extracted project folder, where `requirements.txt` is located, and run:
+Open a terminal in the project root, which contains `backend/`, `database/`, `frontend/`, and `requirements.txt`. Install the dependencies and initialize the database:
 
 ```bash
 python -m pip install -r requirements.txt
 python database/init_db.py
 ```
 
-Initialization creates `database/potter_airlines.db` from the supplied CSV and imports 19,006 flights. The generated database is ignored by Git. If it already exists, initialization stops without overwriting it.
+Initialization imports the supplied CSV into `database/potter_airlines.db`. If the database already exists, the command stops without overwriting it. Initialize the database before launching either interface.
 
-Run the complete command-line demonstration from the same project root:
+To launch the Streamlit administrator interface:
 
 ```bash
-python -m backend.cli --origin Toronto --destination Montreal --date 2026-10-02 --as-of 2026-09-20 --demo-pricing --demo-update
+streamlit run frontend/app.py
 ```
 
-Use `python -m backend.cli`, not `python backend/cli.py`, so that the package imports resolve correctly. The fixed `--as-of` date makes this example reproducible even after the example flight date has passed.
+To run the complete command-line demonstration:
 
-To intentionally rebuild an existing database:
+```bash
+python -m backend.cli --origin Toronto --destination Montreal --date 2026-10-02 --as-of 2026-09-20 --demo-pricing --demo-crud
+```
+
+Run the CLI as a module from the project root rather than executing `backend/cli.py` directly. The fixed `--as-of` date makes the example reproducible even after its departure date has passed in real time.
+
+### Upgrading an existing database
+
+An older project database may still contain minimum fares set to 75% of base fare. Update those values to the current 80% rule without discarding saved flights or seat counts:
+
+```bash
+python -m database.migrate_minimum_fares
+```
+
+This migration updates only `minimum_fare` and can be run repeatedly. Fresh databases imported from the updated CSV already use 80%.
+
+### Rebuilding the database
+
+To deliberately replace SQLite with the current CSV contents:
 
 ```bash
 python database/init_db.py --reset
 ```
 
-**Warning:** a successful reset replaces the database with the original CSV data. It discards saved seat changes and any flights added or deleted in SQLite. Normal runs should not use `--reset`.
+**Warning:** this removes database-only additions and edits and can restore flights previously deleted from SQLite. It is not necessarily a return to the original seat inventory: seat updates may already have been synchronized to the CSV. Back up both the database and CSV before demonstrations that modify existing flights.
 
-## 3. Command-Line Usage and Demonstration
+## 3. Using the Application and Demonstrations
 
-### Search options
+### Streamlit administrator workflow
+
+Select an origin, destination, and departure date. The date picker allows any date between October 2, 2026 and October 2, 2027, including route/date combinations with no scheduled flights. Searches use the current local date and time; the interface does not provide an as-of date control.
+
+The results table displays flight identifiers, cities, departure dates and times, seats remaining, capacity, fare, and availability status. Results can be ordered by price or departure time. In price order, available flights appear first and sold-out flights appear last. In departure-time order, all returned flights follow their scheduled departure times.
+
+In the administrator section, select a flight, enter an exact integer seat count, and press **Update seats**. The backend validates the count, saves it, and reloads the flight to calculate its updated fare. The results table is queried again after the update. A fare may remain unchanged when the update stays within the same pricing band or when a fare limit applies.
+
+Setting the count to zero displays `SOLD OUT` rather than a price. The flight remains selectable, and restoring a positive count makes it priceable again. A value above capacity is rejected with an error message. When no flights match, the interface displays: "No flights available for the selected route and date."
+
+### Command-line options
+
+`--origin` and `--destination` specify different city names using the dataset's spelling and capitalization. `--date` specifies the departure date in `YYYY-MM-DD` format. `--as-of` optionally supplies a reference date at midnight; omission uses the current local date and time.
+
+`--demo-pricing` compares the first available, price-ranked flight at 90, 45, 20, 7, and 1 day before departure. It also runs fixed minimum- and maximum-fare examples in memory. Those examples do not modify the database and still run when the search has no matches.
+
+`--demo-crud` creates a uniquely named temporary flight, retrieves it, reduces its seats from 21 to 20, recalculates its price, rejects an update that would produce negative seats, and deletes the temporary record. `--demo-update` is an alias for this same demonstration; it no longer modifies an existing search-result flight.
+
+With `--as-of 2026-09-20`, the temporary flight departs on November 4, 2026. Reducing its seats from 21% to 20% changes the seat multiplier from 1.05 to 1.15 and the fare from 94.50 to 103.50. Cleanup removes the temporary record even if a later demonstration step raises an exception. Existing flights and the source CSV remain unchanged by this temporary-flight demonstration.
+
+For help:
 
 ```bash
 python -m backend.cli --help
 ```
 
-| Argument | Meaning |
-| --- | --- |
-| `--origin` | Required origin city, such as `Toronto`. |
-| `--destination` | Required destination city, such as `Montreal`. |
-| `--date` | Required departure date in `YYYY-MM-DD` format. |
-| `--as-of` | Optional reference date for pricing and departure filtering. A supplied date is interpreted at midnight; omission uses the current local date and time. |
-| `--demo-pricing` | Compare the first ranked flight at 45, 20, 7, and 1 calendar days before departure. |
-| `--demo-update` | Temporarily reduce that flight's seat count by one, reject an invalid update, and restore the original count. |
+### Reproducible edge-case searches
 
-Use city names as they appear in the dataset, including capitalization. Search results include only flights with seats remaining and a departure time later than the reference time. Results are sorted by fare, then departure time. Sold-out flights remain in SQLite but are excluded from search results and the available origin, destination, and date choices.
-
-### Example results
-
-With a freshly initialized, unmodified database, the quick-start command begins with:
-
-```text
-5 flights from Toronto to Montreal on 2026-10-02:
-  PA000001  06:45  seats 79/180  fare 164.45
-  PA000002  10:00  seats 77/180  fare 164.45
-  PA000003  13:30  seats 62/180  fare 164.45
-  PA000004  17:15  seats 42/180  fare 172.67
-  PA000005  20:30  seats 76/180  fare 172.67
-```
-
-The application also reports the minimum, maximum, and average fare for the result set. For this example, the average is 167.74.
-
-The pricing demonstration holds the flight's other inputs fixed and changes only the simulated search date. The seat-update demonstration changes `PA000001` from 79 to 78 seats, attempts an update that would make the count negative, prints the expected validation error, and restores 79 seats in a `finally` block. It demonstrates a database update rather than a permanent booking or an automatic repricing after the update.
-
-### No matching flights
-
-The supplied dataset starts on October 2, 2026. This valid search for an earlier date demonstrates an empty result:
+The supplied data has no Montreal-to-Ottawa flights on November 17, 2026:
 
 ```bash
-python -m backend.cli --origin Toronto --destination Montreal --date 2026-10-01 --as-of 2026-09-20
+python -m backend.cli --origin Montreal --destination Ottawa --date 2026-11-17 --as-of 2026-09-20
 ```
 
+The CLI prints:
+
 ```text
-No available future flights match this search.
+No future flights match this search.
 ```
+
+The following search includes the supplied sold-out flight `PA000009`:
+
+```bash
+python -m backend.cli --origin Toronto --destination Ottawa --date 2026-10-02 --as-of 2026-09-20
+```
+
+Sold-out flights have price `None` internally, appear with a sold-out label, and are excluded from numerical fare statistics. These examples assume the supplied records have not been changed.
 
 ## 4. Project Structure and Design Choices
 
-```text
-Potter-Airlines-Project/
-|-- backend/
-|   |-- __init__.py
-|   |-- flight.py          # Validated, immutable Flight model
-|   |-- pricing.py         # Single-flight pricing and factor breakdown
-|   |-- search.py          # Search helpers, vectorized fares, and ranking
-|   |-- admin.py           # Validated flight creation
-|   `-- cli.py             # Runnable search and demonstration workflow
-|-- database/
-|   |-- schema.sql         # flights table and database constraints
-|   |-- init_db.py         # CSV import and explicit database reset
-|   |-- db.py              # Connection management and CRUD operations
-|   `-- potter_airlines.db # Generated during initialization
-|-- data/
-|   `-- potter_airline_routes_dataset_regenerated.csv
-|-- tests/
-|   |-- test_admin.py
-|   |-- test_flight_pricing.py
-|   `-- test_search.py
-|-- frontend/              # Placeholder only
-|-- requirements.txt
-`-- README.md
-```
+`backend/flight.py` defines the frozen `Flight` dataclass. It validates required fields, different origin and destination cities, canonical date/time formats, popularity categories, integer seat counts, finite fare values, and valid ranges. Its `departure` and `seat_fraction` properties support pricing. A `Flight` is a snapshot of a record, so it must be reloaded after a database change.
 
-`Flight` is a frozen dataclass representing one database record. It validates required fields, date and time formats, route popularity, seat ranges, and fare ordering. Its `departure` and `seat_fraction` properties provide the datetime and remaining-seat ratio used by pricing. Because a `Flight` object is a snapshot, it should be reloaded from SQLite after a seat update before recalculating its price.
+`backend/pricing.py` contains the shared route multipliers, seat and booking-day bands, seasonal helper, and single-flight calculation. `PriceResult` contains the final fare and the four applied multipliers, supporting an explanation of each pricing decision.
 
-Single-flight pricing is separated from storage and returns a `PriceResult` containing the final fare and all six multipliers. Search uses `analyze_fares()` to calculate a collection of fares with NumPy arrays, `np.where`, `np.select`, and `np.clip`. Python comprehensions prepare the arrays, but the factor selection and fare arithmetic are vectorized rather than implemented as repeated calls to the single-flight pricing function. Final result ordering uses Python's `sorted()`.
+`backend/search.py` handles route/date choices, flight filtering, batch pricing, and ranking. `analyze_fares()` uses NumPy arrays, `np.select`, `np.clip`, and element-wise arithmetic to calculate multiple fares. Array preparation still uses Python comprehensions, and result ordering uses Python sorting. Both pricing paths use the shared rules from `pricing.py` rather than maintaining separate copies of the multiplier tables.
 
-Database operations are kept in a separate module. SQL values are supplied through placeholders, including in queries whose fixed column lists or conditions are assembled in code. Connection handling commits successful transactions, rolls back failed transactions, and closes connections.
+`backend/admin.py` provides validated flight creation and capacity updates. Capacity updates preserve remaining seats and reject capacities below that count. These administrative functions are available through Python; the Streamlit interface exposes remaining-seat updates, not flight creation, deletion, or capacity editing. `backend/cli.py` provides the runnable command-line workflow and demonstrations.
 
-## 5. Flight Data and SQLite Persistence
+`frontend/app.py` handles controls and display. It calls backend functions rather than calculating fares or issuing SQL itself. `database/schema.sql` defines the table, `database/init_db.py` imports the CSV, `database/db.py` implements database operations and seat synchronization, and `database/migrate_minimum_fares.py` upgrades existing minimum fares. The `data/` directory contains the CSV; `tests/` contains model, pricing, database, search, and CLI tests.
 
-The supplied CSV contains **19,006 scheduled flights**, covering **October 2, 2026 through October 2, 2027**. It connects Toronto, Montreal, Ottawa, and Vancouver through six city pairs, or twelve directional routes. The file includes sold-out flights as well as flights with available seats.
+## 5. Flight Data and Persistence
 
-| Fields | Purpose |
-| --- | --- |
-| `flight_id` | Unique scheduled-flight identifier. |
-| `origin`, `destination` | Departure and arrival city names. |
-| `flight_date`, `departure_time` | Scheduled departure in `YYYY-MM-DD` and `HH:MM` format. |
-| `route_popularity` | Fixed route-demand category: `Low`, `Medium`, or `High`. |
-| `seat_capacity`, `seats_remaining` | Total capacity and currently available seats. |
-| `base_fare`, `minimum_fare`, `maximum_fare` | Fare inputs and permitted bounds. |
+The supplied CSV contains **19,006 scheduled flights** from October 2, 2026 through October 2, 2027. It connects Toronto, Montreal, Ottawa, and Vancouver through six city pairs, or twelve directional routes. Some route/date combinations have no records, and some flights have zero seats remaining.
 
-`database/schema.sql` defines the `flights` table. Its constraints enforce different origin and destination cities, valid popularity categories, positive capacity, seats between zero and capacity, and `0 <= minimum_fare <= base_fare <= maximum_fare`. Initialization checks the CSV column names and order, imports through parameterized inserts, and asserts that the database row count matches the CSV. It stages the import in a temporary database before replacing the saved database, so an unsuccessful import does not overwrite saved data.
+Each record contains eleven fields: `flight_id`, `origin`, `destination`, `flight_date`, `departure_time`, `route_popularity`, `seat_capacity`, `seats_remaining`, `base_fare`, `minimum_fare`, and `maximum_fare`. Arrival times, aircraft types, and timezone information are not included.
 
-The persistence layer provides all four CRUD operations:
+SQLite supports create, read, update, and delete operations using parameterized values. The schema enforces different origin and destination cities, valid popularity categories, positive capacity, seats within capacity, and `minimum_fare <= base_fare <= maximum_fare` with a non-negative minimum. Initialization checks the CSV header and imported row count. It builds a temporary database before replacing the saved database, protecting existing data when import fails.
 
-| Operation | Functions |
-| --- | --- |
-| Create | `backend.admin.add_flight()` validates a new flight and calls `database.db.insert_flight()`. |
-| Read | `get_flight_by_id()`, `get_flights_by_destination()`, and the search functions retrieve records. |
-| Update | `update_seats()` applies a change; `set_seats()` sets an exact integer count. |
-| Delete | `delete_flight()` removes a record and reports whether a row was deleted. |
+`add_flight()` validates and inserts a new flight. `get_flight_by_id()`, `get_flights_by_destination()`, and search helpers retrieve records. `update_seats()` applies a relative change, while `set_seats()` sets an absolute count. `set_capacity()`, exposed through `backend.admin.update_capacity()`, changes capacity without changing remaining seats. `delete_flight()` removes a record.
 
-Administrative creation and deletion are Python functions, not command-line subcommands. They are exercised in `tests/test_admin.py`. Sold-out records can still be retrieved and updated through these backend functions.
+SQLite is the primary operational store. For matching records in the supplied CSV, updates through `set_seats()` and `update_seats()` also synchronize `seats_remaining` after the default database transaction commits. Synchronization is skipped for temporary databases, a missing CSV, or records not present in the CSV. Other operations, including flight creation, deletion, capacity changes, and minimum-fare migration, do not rewrite the CSV.
 
-Every supplied CSV record has a minimum fare equal to 75% of its base fare. `add_flight()` calculates this minimum with `Decimal` and `ROUND_HALF_UP`; a supplied minimum must match that rule. The lower-level database functions and schema enforce fare ordering, not the 75% policy itself. Calculated dynamic prices are not stored: they are recomputed when requested. SQLite changes do not modify the source CSV.
+Every supplied record uses `minimum_fare = 0.80 * base_fare`. `add_flight()` calculates this minimum with `Decimal` and `ROUND_HALF_UP` and rejects a conflicting supplied minimum. The lower-level schema enforces fare ordering rather than the 80% policy. Dynamic fares are calculated when requested rather than stored in SQLite.
 
 ## 6. Pricing Logic
 
 ### Formula and fare limits
 
-```python
-from math import floor
+The implemented formula can be expressed as:
 
-# Use the flight's fare inputs and the calculated pricing factors.
+```python
 raw_fare = (
     base_fare
     * route_factor
-    * day_factor
-    * time_of_day_factor
     * seats_factor
     * season_factor
     * days_until_flight_factor
 )
 
 bounded_fare = min(maximum_fare, max(minimum_fare, raw_fare))
-price = floor(bounded_fare * 100 + 0.5 + 1e-9) / 100
 ```
 
-The implementation applies the bounds before rounding. For the supplied cent-precision fare inputs, the result remains within the fare limits. The rounding expression rounds non-negative fares to the nearest cent, with a small tolerance for floating-point error.
+The raw amount is limited to the flight's configured minimum and maximum, then rounded to cents. Weekday/weekend and departure time do not apply separate multipliers. Departure time still determines whether a flight has already departed.
 
-### Implemented factors
+### Route popularity
 
-Let `r = seats_remaining / seat_capacity`. Seat thresholds apply to this ratio without first rounding it to a whole percentage.
-
-| Factor | Rules |
+| Popularity | Multiplier |
 | --- | --- |
-| Route popularity | Low: **0.95**; Medium: **1.00**; High: **1.10**. |
-| Day of week | Monday-Friday: **1.00**; Saturday-Sunday: **1.05**. |
-| Departure time | 21:00-05:59: **0.90**; 06:00-16:59: **1.00**; 17:00-20:59: **1.05**. |
-| Seats remaining | `0 <= r <= 0.10`: **1.25**; `0.10 < r <= 0.20`: **1.10**; `0.20 < r <= 0.50`: **1.00**; `0.50 < r <= 1.00`: **0.95**. |
-| Seasonality | Low: **0.90**; regular: **1.00**; peak: **1.10**; peak holiday: **1.20**. Dates are defined below. |
-| Days until departure | 0-3 days: **1.30**; 4-14 days: **1.15**; 15-30 days: **1.00**; 31 or more days: **0.95**. |
+| Low | 0.97 |
+| Medium | 1.00 |
+| High | 1.06 |
 
-Seasonality is determined by the departure date, with inclusive date boundaries:
+### Remaining seats
 
-| Season | Departure dates |
+Let `r = seats_remaining / seat_capacity`. The ratio is used without rounding the percentage.
+
+| Remaining-seat ratio | Multiplier or status |
 | --- | --- |
-| Low | January 6-March 31 |
-| Regular | April 1-June 14 and September 1-December 19 |
-| Peak | June 15-August 31 |
-| Peak holiday | December 20-January 5 |
+| `0.65 < r <= 1.00` | 0.92 |
+| `0.40 < r <= 0.65` | 0.97 |
+| `0.20 < r <= 0.40` | 1.05 |
+| `0.10 < r <= 0.20` | 1.15 |
+| `0.05 < r <= 0.10` | 1.22 |
+| `0.00 < r <= 0.05` | 1.30 |
+| `r = 0` | Sold out; no fare |
 
-Days until departure are calculated from calendar dates, not elapsed 24-hour periods. Today is day 0 and tomorrow is day 1. A flight departing at or before the reference datetime cannot be priced. The low-level pricing functions can calculate a hypothetical fare for zero remaining seats, but search excludes such flights; a calculated fare does not indicate ticket availability.
+Zero seats means sold out, not a zero-price ticket. Direct single-flight and batch pricing reject sold-out flights; search retains them separately without a fare.
+
+### Seasonality
+
+| Season | Departure dates | Multiplier |
+| --- | --- | --- |
+| Low Season | January 6-March 31 and November 1-December 19 | 0.90 |
+| Regular Season | April 1-June 24 and September 1-October 31 | 1.00 |
+| Peak Season | June 25-August 31 | 1.12 |
+| Peak Holiday | December 20-January 5 | 1.25 |
+
+All endpoints are inclusive, and the seasonal rules repeat annually based on the departure date.
+
+### Days until departure
+
+| Category | Calendar days until departure | Multiplier |
+| --- | --- | --- |
+| Very Early | 61 or more | 0.95 |
+| Standard | 31-60 | 1.00 |
+| Near Term | 15-30 | 1.05 |
+| Soon | 4-14 | 1.15 |
+| Last Minute | 0-3 | 1.30 |
+
+The difference is measured in calendar dates rather than completed 24-hour periods. A flight departing at or before the reference datetime cannot be priced or returned by search.
 
 ### Worked example
 
-On a fresh database, `PA000001` departs Toronto for Montreal on Friday, October 2, 2026 at 06:45. It has 79 of 180 seats remaining, a base fare of 130.00, a minimum of 97.50, and a maximum of 235.00. With `--as-of 2026-09-20`, departure is 12 calendar days away.
+In the supplied updated CSV, `PA000001` departs Toronto for Montreal on October 2, 2026 at 06:45. It has 180 of 180 seats remaining, High popularity, a base fare of 130.00, a minimum of 104.00, and a maximum of 235.00. With `--as-of 2026-09-20`, the flight is 12 calendar days away:
 
 ```text
-130.00 * 1.10 * 1.00 * 1.00 * 1.00 * 1.00 * 1.15 = 164.45
+130.00 * 1.06 * 0.92 * 1.00 * 1.15 = 145.7924
 ```
 
-The route multiplier is 1.10, the weekday and departure-time multipliers are 1.00, the remaining-seat ratio is about 43.89%, the flight is in regular season, and the 12-day advance-booking multiplier is 1.15. The result is already between the fare limits, so the final fare is **164.45**.
+The amount is within the fare limits, producing a final fare of **145.79**. This example changes if the saved seat inventory changes.
+
+### Fare-limit demonstrations
+
+The CLI includes two illustrative in-memory flights with base fare 100.00, minimum 80.00, and maximum 150.00. A low-season, low-popularity flight with full availability and early booking produces 76.3002 before limits, so its final fare is 80.00. A peak-holiday, high-popularity flight with 1% availability and one day until departure produces 223.925 before limits, so its final fare is 150.00. These are fixed demonstration scenarios, not records imported from the CSV. The maximum of 150.00 is specific to these examples, not a universal percentage rule.
 
 ## 7. Validation and Testing
 
-Run the supplied tests from the project root:
+Run the test suite from the project root:
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-The current suite contains **19 test methods**, all of which passed in the verification environment listed above. Several methods exercise multiple boundary inputs using subtests.
+The current suite contains **40 test methods**. All passed in a verification environment using Python 3.13.5 and NumPy 2.3.5. Several methods exercise multiple inputs through subtests, including 441 scenarios comparing individual and vectorized pricing across pricing boundaries.
 
 | Test file | Coverage |
 | --- | --- |
-| `test_admin.py` | Flight creation and retrieval, duplicate IDs, deletion, the 75% minimum-fare rule, invalid new-flight data, seat setting, and preservation or reset of database contents. |
-| `test_flight_pricing.py` | Model construction and properties, invalid fields, route/day/time/seat factors, season and advance-booking boundaries, fare limits, departed flights, and non-finite pricing inputs. |
-| `test_search.py` | Available route/date choices, exclusion of sold-out or departed flights, ranking, empty results, invalid search filters, and agreement between vectorized and individual prices. |
+| `test_admin.py` | Flight creation, deletion, absolute and relative seat updates, capacity updates, minimum-fare migration, invalid inputs, and initialization/reset behavior. |
+| `test_flight_pricing.py` | Model validation, four-factor pricing, seasonal and booking-day boundaries, sold-out and departed-flight rejection, and fare limits. |
+| `test_search.py` | Filtering, sold-out visibility, sorting, empty results, and vectorized pricing. |
+| `test_cli.py` | The complete demonstration, legacy flag compatibility, readable errors, fare-limit output, and temporary-record cleanup. |
 
-Database tests use temporary database paths instead of modifying the normal project database. The command-line `--demo-update` option provides a visible checked edge case: an update below zero seats is rejected and the original seat count is restored. Passing the existing tests does not mean every possible input or operating condition has been covered.
+Database tests use disposable databases rather than the normal project database. The suite focuses on backend and CLI behavior; it does not include automated Streamlit interaction tests. Passing these tests does not establish that every interface, dependency version, or input condition has been covered.
 
 ## 8. Known Limitations
 
-**Data and model scope.** The dataset is fictional and has a fixed date range. Route popularity, fare inputs, and multiplier thresholds are predefined rather than inferred from live demand. The model is not an optimization or machine-learning system. Departure datetimes have no timezone information; arrival times and aircraft types are not included. Use a fixed `--as-of` date to reproduce demonstrations after scheduled flights have passed.
+### Scope and deployment
 
-**Interface and availability.** Only the command-line workflow and importable backend functions are implemented. There is no Streamlit interface, authentication, payment flow, booking system, or LLM/API integration. Sold-out flights are hidden from customer-facing search rather than displayed as unavailable. Some invalid command-line inputs raise exceptions without a friendly error message. The temporary update demonstration is not designed for concurrent booking activity.
+The data and pricing rules are fictional and predefined, not connected to live airline inventory or inferred from demand. The application does not implement authentication, booking, payment, timezone conversion, or a production concurrency strategy. Its administrator controls are intended for a local demonstration.
 
-**Input-validation gaps.** `set_seats()` requires an integer, but `update_seats()` and the `Flight` model do not consistently enforce integer seat inputs; a fractional update can currently be accepted. Fare inputs should use no more than two decimal places: the pricing functions clip before rounding, so a bound with additional decimal places can be crossed by the final rounding step. Direct database inserts also bypass some model-level validation. These are current limitations, not checks guaranteed by the existing tests.
+### Dates and reproducibility
 
-**Maintenance.** Single-flight and vectorized pricing implement the same rules separately. Changes to multipliers or boundaries must be applied to both implementations and checked with tests. The declared NumPy version range is not a fully pinned environment, and the existing tests are not an exhaustive test suite.
+The Streamlit date range is hard-coded to the supplied dataset, and its searches use the current local time. Future maintenance is needed for a different schedule range. The CLI's `--as-of` option supports reproducible historical demonstrations.
+
+### SQLite and CSV synchronization
+
+SQLite and CSV are not synchronized by one shared transaction. If CSV synchronization fails, the SQLite seat update has already committed. Only remaining seats are mirrored: capacity and other fields can differ between stores. In particular, increasing capacity in SQLite and then saving seats above the CSV's old capacity can make the CSV unsuitable for reinitialization until those fields are aligned. Keep consistent backups before editing inventory or rebuilding the database.
+
+### Fare precision and validation
+
+Fare inputs should use cent precision. Because the implementation applies limits before final rounding, a limit with more than two decimal places can be crossed by rounding. The supplied fare inputs do not have this issue. Lower-level database inserts also bypass some `Flight` and administrative validation, so application-level helpers should be used for normal changes.
