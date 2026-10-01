@@ -241,15 +241,7 @@ half-up rounding. New flights and the source CSV use this rule. The strongest
 combined discount produces about 76.3% of base fare, so the minimum raises that
 fare to 80%.
 
-For a database created before this change, synchronize minimum fares without
-resetting saved flights or seat counts:
-
-```bash
-python -m database.migrate_minimum_fares
-```
-
-This updates only `minimum_fare` for existing flights and can be run again safely.
-Fresh databases created from the updated CSV already use 80%.
+Databases initialized from the current CSV already use the 80% minimum-fare rule.
 
 ## Project task tracker
 
