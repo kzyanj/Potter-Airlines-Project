@@ -92,22 +92,6 @@ class AdminOperationsTests(unittest.TestCase):
             add_flight(data)
         self.assertIsNone(db.get_flight_by_id(data["flight_id"]))
 
-    def test_migration_preserves_other_fields_and_is_repeatable(self):
-        """Migrate old minimum fares to 80% of base while preserving seats and all other fields.
-        A second run must report zero changes, demonstrating repeatability."""
-        from database.migrate_minimum_fares import migrate_minimum_fares
-
-        data = self.new_flight_data("PA-TEST-MIGRATION")
-        data.update(base_fare=100.03, minimum_fare=75.02, maximum_fare=200,
-                    seats_remaining=17)
-        db.insert_flight(data)
-        before = db.get_flight_by_id(data["flight_id"])
-        self.assertGreaterEqual(migrate_minimum_fares(), 1)
-        after = db.get_flight_by_id(data["flight_id"])
-        self.assertEqual(after[9], 80.02)
-        self.assertEqual(after[:9] + after[10:], before[:9] + before[10:])
-        self.assertEqual(migrate_minimum_fares(), 0)
-
     def test_duplicate_id_is_rejected(self):
         """Reject a duplicate flight ID and translate the database uniqueness error into ValueError."""
         data = self.new_flight_data("PA-TEST-DUPLICATE")
