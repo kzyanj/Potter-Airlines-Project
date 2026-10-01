@@ -1,6 +1,7 @@
 """Basic flight operations for the SQLite database."""
 
 import csv
+import io
 import os
 import sqlite3
 import tempfile
@@ -25,6 +26,62 @@ def get_connection():
         connection.close()
 
 
+def _csv_sync_enabled():
+    """Only the real database is mirrored to the project CSV (tests use temp databases)."""
+    return DATABASE_PATH == DEFAULT_DATABASE_PATH and CSV_PATH.exists()
+
+
+def _csv_number(value):
+    """Format a fare like the source CSV: whole numbers plain, others as written."""
+    return str(int(value)) if float(value) == int(value) else str(value)
+
+
+def csv_has_flight(flight_id):
+    """True if the project CSV already has a row with this flight_id."""
+    if not _csv_sync_enabled():
+        return False
+    with CSV_PATH.open(newline="", encoding="utf-8-sig") as source:
+        return any(row["flight_id"] == flight_id for row in csv.DictReader(source))
+
+
+def append_flight_to_csv(flight):
+    """Append one flight (a mapping with the CSV's field names) to the project CSV.
+
+    Columns come from the CSV's own header, minimum_fare uses two decimals and
+    the other fares are written the way the existing rows are. The file is
+    rewritten via a temporary file and swapped in, so a failure cannot leave a
+    half-written CSV. Raises ValueError for a duplicate flight_id.
+    """
+    if not _csv_sync_enabled():
+        return
+    if csv_has_flight(flight["flight_id"]):
+        raise ValueError(f"Flight {flight['flight_id']} already exists in the CSV")
+    temp_name = None
+    try:
+        content = CSV_PATH.read_bytes()
+        header = next(csv.reader(content.decode("utf-8-sig").splitlines()))
+        values = dict(flight)
+        values["minimum_fare"] = f"{float(values['minimum_fare']):.2f}"
+        for name in ("base_fare", "maximum_fare"):
+            values[name] = _csv_number(values[name])
+        line = io.StringIO()
+        csv.writer(line, lineterminator="\n").writerow([values[name] for name in header])
+        if not content.endswith(b"\n"):
+            content += b"\n"
+        with tempfile.NamedTemporaryFile(
+            "wb", dir=CSV_PATH.parent, suffix=".tmp", delete=False
+        ) as target:
+            temp_name = target.name
+            target.write(content + line.getvalue().encode("utf-8"))
+        os.replace(temp_name, CSV_PATH)
+        temp_name = None
+    except Exception as error:
+        raise OSError(f"CSV could not be updated: {error}") from error
+    finally:
+        if temp_name is not None:
+            Path(temp_name).unlink(missing_ok=True)
+
+
 def _sync_seats_to_csv(flight_id, seats_remaining):
     """Copy a committed seats_remaining value into the matching CSV row.
 
@@ -34,7 +91,7 @@ def _sync_seats_to_csv(flight_id, seats_remaining):
     cannot leave a half-written CSV. Only the real database syncs, so tests
     using a temporary database never touch the project CSV.
     """
-    if DATABASE_PATH != DEFAULT_DATABASE_PATH or not CSV_PATH.exists():
+    if not _csv_sync_enabled():
         return
     temp_name = None
     try:

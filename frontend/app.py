@@ -12,7 +12,7 @@ Run with:  streamlit run frontend/app.py
 """
 
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, time
 from pathlib import Path
 
 import streamlit as st
@@ -23,6 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from backend.admin import add_flight
 from backend.flight import Flight
 from backend.pricing import calculate_price
 from backend.search import get_destinations, get_origins, search_flights
@@ -168,6 +169,101 @@ def render_seat_admin(results, as_of):
             )
 
 
+def validate_new_flight(form, as_of):
+    """Quick checks on the Create Flight form; return a list of error messages.
+
+    Detailed rules (date/time format, popularity values, minimum fare = 80% of
+    base) are enforced by backend.admin.add_flight(), not repeated here.
+    """
+    errors = []
+    if not form["flight_id"]:
+        errors.append("Flight ID cannot be blank.")
+    elif get_flight_by_id(form["flight_id"]) is not None:
+        errors.append(f"Flight ID {form['flight_id']} already exists.")
+    if form["origin"] == form["destination"]:
+        errors.append("Origin and destination must be different.")
+    if not MIN_SEARCH_DATE <= form["date"] <= MAX_SEARCH_DATE:
+        errors.append(
+            f"Departure date must be between {MIN_SEARCH_DATE} and {MAX_SEARCH_DATE}."
+        )
+    elif datetime.combine(form["date"], form["time"]) <= as_of:
+        errors.append("Departure must be in the future.")
+    if form["capacity"] < 1:
+        errors.append("Seat capacity must be at least 1.")
+    if form["seats"] < 0:
+        errors.append("Seats remaining cannot be negative.")
+    elif form["seats"] > form["capacity"]:
+        errors.append("Seats remaining cannot exceed seat capacity.")
+    if form["base_fare"] <= 0 or form["max_fare"] <= 0:
+        errors.append("Fares must be positive.")
+    elif form["max_fare"] < form["base_fare"]:
+        errors.append("Maximum fare must be at least the base fare.")
+    return errors
+
+
+def render_flight_creator(as_of):
+    """Admin form that creates a flight through backend.admin.add_flight()."""
+    st.subheader("Create new flight")
+    cities = get_origins()
+
+    # Shown after the rerun that follows a successful creation.
+    message = st.session_state.pop("flight_created_message", None)
+    if message:
+        st.success(message)
+    if len(cities) < 2:
+        st.info("At least two cities are needed to create a flight.")
+        return
+
+    with st.form("create_flight_form"):
+        flight_id = st.text_input("Flight ID", placeholder="e.g. PA020001")
+        left, right = st.columns(2)
+        origin = left.selectbox("Origin", cities, key="create_origin")
+        destination = right.selectbox("Destination", cities, index=1, key="create_destination")
+        flight_date = left.date_input(
+            "Departure date", value=MIN_SEARCH_DATE,
+            min_value=MIN_SEARCH_DATE, max_value=MAX_SEARCH_DATE, key="create_date",
+        )
+        departure_time = right.time_input("Departure time", value=time(9, 0), key="create_time")
+        popularity = left.selectbox("Route popularity", ["High", "Medium", "Low"], key="create_pop")
+        capacity = right.number_input("Seat capacity", min_value=0, value=150, step=1, key="create_cap")
+        seats = left.number_input("Seats remaining", value=150, step=1, key="create_seats")
+        base_fare = right.number_input("Base fare", value=100.0, step=1.0, format="%.2f", key="create_base")
+        max_fare = left.number_input("Maximum fare", value=200.0, step=1.0, format="%.2f", key="create_max")
+        st.caption("Minimum fare is set automatically to 80% of the base fare.")
+        submitted = st.form_submit_button("Create flight")
+
+    if not submitted:
+        return
+    form = {
+        "flight_id": flight_id.strip(), "origin": origin, "destination": destination,
+        "date": flight_date, "time": departure_time, "capacity": int(capacity),
+        "seats": int(seats), "base_fare": float(base_fare), "max_fare": float(max_fare),
+    }
+    errors = validate_new_flight(form, as_of)
+    if errors:
+        for error in errors:
+            st.error(error)
+        return
+    try:
+        flight = add_flight({
+            "flight_id": form["flight_id"], "origin": origin, "destination": destination,
+            "flight_date": flight_date.isoformat(),
+            "departure_time": departure_time.strftime("%H:%M"),
+            "route_popularity": popularity, "seat_capacity": form["capacity"],
+            "seats_remaining": form["seats"], "base_fare": form["base_fare"],
+            "maximum_fare": form["max_fare"],
+        })
+    except ValueError as error:
+        st.error(f"Could not create flight: {error}")
+        return
+    # Rerun so the search, results table and seat selector reload from SQLite.
+    st.session_state["flight_created_message"] = (
+        f"Flight {flight.flight_id} created successfully "
+        f"({flight.origin} → {flight.destination}, {flight.flight_date} {flight.departure_time})."
+    )
+    st.rerun()
+
+
 def main():
     as_of = datetime.now()
 
@@ -188,6 +284,8 @@ def main():
             render_seat_admin(results, as_of)
         else:
             st.info("Admin controls appear once a search returns flights.")
+        st.divider()
+        render_flight_creator(as_of)
 
     # Re-query after any update above, so the table below reflects it.
     results = search_flights(origin, destination, flight_date, as_of)
