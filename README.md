@@ -323,16 +323,6 @@ python -m backend.cli --origin Toronto --destination Montreal --date 2026-10-02 
 
 Run the CLI as a module from the project root rather than executing `backend/cli.py` directly. The fixed `--as-of` date makes the example reproducible even after its departure date has passed in real time.
 
-### Upgrading an existing database
-
-An older project database may still contain minimum fares set to 75% of base fare. Update those values to the current 80% rule without discarding saved flights or seat counts:
-
-```bash
-python -m database.migrate_minimum_fares
-```
-
-This migration updates only `minimum_fare` and can be run repeatedly. Fresh databases imported from the updated CSV already use 80%.
-
 ### Rebuilding the database
 
 To deliberately replace SQLite with the current CSV contents:
@@ -403,7 +393,7 @@ Sold-out flights have price `None` internally, appear with a sold-out label, and
 
 `backend/admin.py` provides validated flight creation and capacity updates. Capacity updates preserve remaining seats and reject capacities below that count. These administrative functions are available through Python; the Streamlit interface exposes remaining-seat updates, not flight creation, deletion, or capacity editing. `backend/cli.py` provides the runnable command-line workflow and demonstrations.
 
-`frontend/app.py` handles controls and display. It calls backend functions rather than calculating fares or issuing SQL itself. `database/schema.sql` defines the table, `database/init_db.py` imports the CSV, `database/db.py` implements database operations and seat synchronization, and `database/migrate_minimum_fares.py` upgrades existing minimum fares. The `data/` directory contains the CSV; `tests/` contains model, pricing, database, search, and CLI tests.
+`frontend/app.py` handles controls and display. It calls backend functions rather than calculating fares or issuing SQL itself. `database/schema.sql` defines the table, `database/init_db.py` imports the CSV, `database/db.py` implements database operations and seat synchronization. The `data/` directory contains the CSV; `tests/` contains model, pricing, database, search, and CLI tests.
 
 ## 5. Flight Data and Persistence
 
