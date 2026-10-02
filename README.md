@@ -77,7 +77,7 @@ Reset database: `python database/init_db.py --reset` replaces SQLite with the cu
 
 ### Using the Interface
 
-Select an origin, destination, and date; compare the matching flights by price or departure time. In **Admin: update seats remaining & create a new flight**. The applications save the update, reloads the flight, recalculates its fare, and refreshes the results. The interface edits remaining seats; flight creation, deletion, and capacity changes are backend operations, not interface buttons.
+Select an origin, destination, and date; compare the matching flights by price or departure time. In **Admin: update seats remaining & create a new flight**. The applications save the update, reloads the flight, recalculates its fare, and refreshes the results. The interface supports creating new flights and updating remaining seats. Flight deletion andcapacity changes remain backend operations rather than interface controls.
 
 **The operational value being updated is `seats_remaining` and `create a new flight`. The change is persisted in SQLite, not just displayed temporarily in the interface.**
 
@@ -319,7 +319,5 @@ This is a meaningful class because it combines flight data with validation and d
 ## Known Limitations
 
 The application uses fictional data and predefined factors, not live demand. It is a local administrator demonstration without authentication or a booking/payment system. Datetimes have no timezone information, and the interface's selectable date range is fixed to the supplied schedule.
-
-SQLite updates and CSV synchronization are not one shared transaction. Only remaining seats are mirrored; capacity changes and other edits may leave the stores inconsistent. A CSV write failure can occur after SQLite has committed. Back up and align both stores before reinitialization.
 
 Use cent-precision fare inputs: clipping happens before rounding, so bounds with additional decimal places may be crossed by the rounding step. Lower-level database writes also bypass some model-level validation; use the application helpers for normal operations.
