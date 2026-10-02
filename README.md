@@ -6,11 +6,11 @@ Potter Airlines is a local administrator application for dynamic flight pricing 
 
 The implemented workflow is: **load CSV data into SQLite -> retrieve matching flights -> create validated Flight objects -> price available flights together with NumPy -> sort and display results -> update seats -> reload and reprice**. Sold-out flights remain visible without a fare.
 
-This project is a flight search and management system with two main functions: user-facing flight search and admin-facing flight management.
+This project is a flight search and management system with two main functions: general user-facing flight search and admin-facing flight management.
 
-For users, the system allows flights to be filtered based on origin, destination, and departure time. When searching for flights on the current date, the system automatically excludes flights that have already departed. For example, if a user searches at 12:00 PM on October 2, only flights departing after 12:00 PM will be displayed.
+For general users, the system allows flights to be filtered based on origin, destination, and departure time. When searching for flights on the current date, the system automatically excludes flights that have already departed. For example, if a user searches at 12:00 PM on October 2, only flights departing after 12:00 PM will be displayed.
 
-For administrators, the system supports updating operational flight data, particularly remaining seat availability, with changes persisted to the database. Administrators can also create and save new flights. Input validation and exception handling are implemented to prevent invalid data from being added or existing valid records from being corrupted. The main implementation of these administrative functions can be found in backend/admin.py.
+For administrators specifically, the system supports updating operational flight data, particularly remaining seat availability, with changes persisted to the database. Administrators can also create and save new flights. Input validation and exception handling are implemented to prevent invalid data from being added or existing valid records from being corrupted. The main implementation of these administrative functions can be found in backend/admin.py.
 
 **DEMO Video Link**: https://drive.google.com/file/d/11noPX5H_DQ34iegfPBhKFw1f_tzb8VCh/view?usp=sharing
 
