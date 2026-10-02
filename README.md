@@ -77,9 +77,9 @@ Reset database: `python database/init_db.py --reset` replaces SQLite with the cu
 
 ### Using the Interface
 
-Select an origin, destination, and date; compare the matching flights by price or departure time. In **Admin: update seats remaining**, select a flight, enter an integer count, and press **Update seats**. The application saves the update, reloads the flight, recalculates its fare, and refreshes the results. The interface edits remaining seats; flight creation, deletion, and capacity changes are backend operations, not interface buttons.
+Select an origin, destination, and date; compare the matching flights by price or departure time. In **Admin: update seats remaining & create a new flight**. The applications save the update, reloads the flight, recalculates its fare, and refreshes the results. The interface edits remaining seats; flight creation, deletion, and capacity changes are backend operations, not interface buttons.
 
-**The operational value being updated is `seats_remaining`. The change is persisted in SQLite, not just displayed temporarily in the interface.**
+**The operational value being updated is `seats_remaining` and `create a new flight`. The change is persisted in SQLite, not just displayed temporarily in the interface.**
 
 ## Design Choices
 
