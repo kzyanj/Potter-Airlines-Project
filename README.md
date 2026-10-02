@@ -108,6 +108,31 @@ The following are the main files supporting the Streamlit workflow. Function par
 
 The **Flight Class - Connecting Data, Pricing and Updates** subsection at the end of **Pricing Logic** explains the class members and their role in the complete workflow.
 
+### Create a new flight
+
+The Streamlit interface provides a **Create new flight** form for adding flights.
+
+1. Enter a unique Flight ID, such as `PA020001`.
+2. Select the origin, destination, departure date, and departure time.
+3. Choose the route popularity: High, Medium, or Low.
+4. Enter the seat capacity, seats remaining, base fare, and maximum fare.
+5. Click **Create flight** to save the flight.
+
+The form validates the following rules:
+
+- The Flight ID must be non-empty and unique in both SQLite and the CSV.
+- Origin and destination must be different.
+- The departure date must be between October 2, 2026 and October 2, 2027, and the departure datetime must be in the future.
+- Seat capacity must be at least 1.
+- Seats remaining must be between 0 and seat capacity.
+- Base fare and maximum fare must be positive, and maximum fare must be at least the base fare.
+
+The minimum fare is calculated automatically as **80% of the base fare**, rounded half-up to two decimal places.
+
+The frontend calls `backend.admin.add_flight()` to validate and save the flight. Successful creation adds the record to both SQLite and `data/potter_airline_routes_dataset_regenerated.csv`. If updating the CSV fails, the backend attempts to remove the newly inserted SQLite record and reports an error.
+
+After creation, the interface refreshes automatically. Search for the new flight's route and date to view it. Flights created with zero remaining seats appear as **Sold out** without an available fare.
+
 ### NumPy Vectorized Calculation
 
 **Location:** `backend/search.py`, called by `search_flights()`.
