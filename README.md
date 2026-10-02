@@ -206,7 +206,7 @@ else:
 
 `main()` then calls `search_flights()` again so the results table reflects the saved inventory, current availability, and recalculated fares. A valid update does not necessarily change the price: the count may remain within the same pricing band, or a fare limit may apply.
 
-**Persistence evidence:** `test_set_seats_persists_and_checks_capacity` and `test_update_seats_persists_and_checks_bounds` in `tests/test_admin.py` read records back after updates and check the saved counts. They also verify that out-of-range updates are rejected without changing valid saved data. The **Example: Changing Remaining Seats** under **Pricing Logic** illustrates how crossing a band changes a fare.
+**Further validation:** `test_set_seats_persists_and_checks_capacity` and `test_update_seats_persists_and_checks_bounds` in `tests/test_admin.py` read records back after updates and check the saved counts. They also verify that out-of-range updates are rejected without changing valid saved data. The **Example: Changing Remaining Seats** under **Pricing Logic** illustrates how crossing a band changes a fare.
 
 ### Validation, Edge Cases and Tests
 
