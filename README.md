@@ -65,11 +65,9 @@ streamlit run frontend/app.py
 
 Open the **Local URL** printed in the terminal in your browser. Keep the terminal running while using the application; press `Ctrl+C` to stop it.
 
-### Existing Database and Reset
+### Initializing the Database
 
-Initialization creates `database/potter_airlines.db`. An existing database is not overwritten: skip initialization on later launches. To upgrade an older database's minimum fares without resetting inventory, run `python -m database.migrate_minimum_fares`.
-
-**Reset warning:** `python database/init_db.py --reset` replaces SQLite with the current CSV contents. Seat updates to existing CSV records are also saved to that CSV, so reset does not necessarily restore the original inventory. Back up both files before modifying demonstration data.
+Reset database: `python database/init_db.py --reset` replaces SQLite with the current CSV contents. Seat updates to existing CSV records are also saved to that CSV, so reset does not necessarily restore the original inventory. Back up both files before modifying demonstration data.
 
 ### Using the Interface
 
