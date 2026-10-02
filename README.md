@@ -6,6 +6,8 @@ Potter Airlines is a local administrator application for dynamic flight pricing 
 
 The implemented workflow is: **load CSV data into SQLite -> retrieve matching flights -> create validated Flight objects -> price available flights together with NumPy -> sort and display results -> update seats -> reload and reprice**. Sold-out flights remain visible without a fare.
 
+**DEMO Video Link**: https://drive.google.com/file/d/11noPX5H_DQ34iegfPBhKFw1f_tzb8VCh/view?usp=sharing
+
 ### Implementation at a Glance
 
 | Requirement | Implementation and evidence |
