@@ -127,10 +127,6 @@ The form validates the following rules:
 - Seats remaining must be between 0 and seat capacity.
 - Base fare and maximum fare must be positive, and maximum fare must be at least the base fare.
 
-The minimum fare is calculated automatically as **80% of the base fare**, rounded half-up to two decimal places.
-
-The frontend calls `backend.admin.add_flight()` to validate and save the flight. Successful creation adds the record to both SQLite and `data/potter_airline_routes_dataset_regenerated.csv`. If updating the CSV fails, the backend attempts to remove the newly inserted SQLite record and reports an error.
-
 After creation, the interface refreshes automatically. Search for the new flight's route and date to view it. Flights created with zero remaining seats appear as **Sold out** without an available fare.
 
 ### NumPy Vectorized Calculation
