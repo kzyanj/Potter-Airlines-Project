@@ -227,7 +227,7 @@ Run all supplied tests:
 python -m unittest discover -s tests -v
 ```
 
-The supplied suite contains **40 test methods**, including database-persistence and vectorization checks. Database tests use temporary databases rather than editing the normal project inventory. The suite does not include automated Streamlit interaction tests.
+The supplied suite contains **39 test methods**, including database-persistence and vectorization checks. Database tests use temporary databases rather than editing the normal project inventory. The suite does not include automated Streamlit interaction tests.
 
 A demonstration can follow the actual workflow: search and rank flights, change seats and explain the fare, inspect `Flight` and `analyze_fares()`, show the schema and CRUD evidence, and trigger a checked edge case. The recorded demonstration is submitted separately.
 
