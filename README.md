@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Potter Airlines is a local administrator application for dynamic flight pricing and seat-inventory management. It uses four explainable pricing factors: route popularity, remaining-seat ratio, seasonality, and days until departure. Administrators use a Streamlit interface to search flights, compare fares, and change remaining seats.
+Potter Airlines is a local administrator application for dynamic flight pricing and seat-inventory management. It uses four explainable pricing factors: route popularity, remaining-seat ratio, seasonality, and days until departure. Administrators use a Streamlit interface to search flights, compare fares, change remaining seats and add a new flight.
 
 The implemented workflow is: **load CSV data into SQLite -> retrieve matching flights -> create validated Flight objects -> price available flights together with NumPy -> sort and display results -> update seats -> reload and reprice**. Sold-out flights remain visible without a fare.
 
